@@ -1,0 +1,1120 @@
+{
+  "application_id": "AICTE-2026-REG-001",
+  "analyzed_documents": [
+    {
+      "metadata": {
+        "filename": "sample_compliant.pdf",
+        "sha256_hash": "d1234c0cf99c41487f998878165ad816d4c18b9c32b45fed3cc4e31d8000d3eb",
+        "total_pages": 1,
+        "file_size_bytes": 49671,
+        "is_pdf": true,
+        "creation_date": "",
+        "modification_date": ""
+      },
+      "pages": [
+        {
+          "page_number": 1,
+          "text": "ALL INDIA COUNCIL FOR TECHNICAL EDUCATION\nINSTITUTIONAL EXTENSION OF APPROVAL APPLICATION\n--------------------------------------------------\nApplication ID: AICTE-2026-REG-001\nPermanent Institute ID: 1-10492839\nInstitution Name: Apex Institute of Technology and Science\nTrust / Society Name: Apex Educational and Charitable Trust\nTotal Land Area: 5.50 Acres\nTotal Built-up Area: 6500 Sqm\nFixed Deposit: INR 2,000,000.00\nFire Safety NOC: VALID\nStudent-Faculty Ratio: 15.0:1\n--------------------------------------------------\nCertified that the spatial and financial standards conform to AICTE norms.\n",
+          "word_count": 69,
+          "tables_found": 0,
+          "images_found": 1,
+          "is_scanned_image": false,
+          "ocr_notice": null,
+          "image_perceptual_hashes": [
+            "002b2b2b2b2b2b00"
+          ]
+        }
+      ],
+      "extracted_fields": {
+        "institution_name": {
+          "field_name": "institution_name",
+          "value": "Apex Institute of Technology and Science",
+          "raw_text": "Institution Name: Apex Institute of Technology and Science",
+          "normalized_value": "Apex Institute of Technology and Science",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 135.5909881591797,
+              "y0": 158.1750030517578,
+              "x1": 337.9799499511719,
+              "y1": 173.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Institution Name: Apex Institute of Technology and Science",
+            "source_document": "sample_compliant.pdf"
+          }
+        },
+        "application_id": {
+          "field_name": "application_id",
+          "value": "AICTE-2026-REG-001",
+          "raw_text": "Application ID: AICTE-2026-REG-001",
+          "normalized_value": "AICTE-2026-REG-001",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 123.97499084472656,
+              "y0": 110.17500305175781,
+              "x1": 234.00796508789062,
+              "y1": 125.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Application ID: AICTE-2026-REG-001",
+            "source_document": "sample_compliant.pdf"
+          }
+        },
+        "aicte_permanent_id": {
+          "field_name": "aicte_permanent_id",
+          "value": "1-10492839",
+          "raw_text": "Permanent Institute ID: 1-10492839",
+          "normalized_value": "1-10492839",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 165.5549774169922,
+              "y0": 134.1750030517578,
+              "x1": 224.26194763183594,
+              "y1": 149.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Permanent Institute ID: 1-10492839",
+            "source_document": "sample_compliant.pdf"
+          }
+        },
+        "land_area_acres": {
+          "field_name": "land_area_acres",
+          "value": "5.50",
+          "raw_text": "Total Land Area: 5.50 Acres",
+          "normalized_value": 5.5,
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 134.3809814453125,
+              "y0": 206.1750030517578,
+              "x1": 155.78697204589844,
+              "y1": 221.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Total Land Area: 5.50 Acres",
+            "source_document": "sample_compliant.pdf"
+          }
+        },
+        "built_up_area_sqm": {
+          "field_name": "built_up_area_sqm",
+          "value": "6500",
+          "raw_text": "Total Built-up Area: 6500 Sqm",
+          "normalized_value": 6500.0,
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 147.2069854736328,
+              "y0": 230.1750030517578,
+              "x1": 171.6709747314453,
+              "y1": 245.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Total Built-up Area: 6500 Sqm",
+            "source_document": "sample_compliant.pdf"
+          }
+        },
+        "fdr_amount_inr": {
+          "field_name": "fdr_amount_inr",
+          "value": "2,000,000.00",
+          "raw_text": "Fixed Deposit: INR 2,000,000.00",
+          "normalized_value": 2000000.0,
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 145.35897827148438,
+              "y0": 254.1750030517578,
+              "x1": 209.5769500732422,
+              "y1": 269.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Fixed Deposit: INR 2,000,000.00",
+            "source_document": "sample_compliant.pdf"
+          }
+        },
+        "fire_safety_noc_status": {
+          "field_name": "fire_safety_noc_status",
+          "value": "VALID",
+          "raw_text": "Fire Safety NOC: VALID",
+          "normalized_value": "VALID",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 136.8009796142578,
+              "y0": 278.17498779296875,
+              "x1": 168.5909881591797,
+              "y1": 293.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Fire Safety NOC: VALID",
+            "source_document": "sample_compliant.pdf"
+          }
+        },
+        "trust_society_name": {
+          "field_name": "trust_society_name",
+          "value": "Apex Educational and Charitable Trust",
+          "raw_text": "Trust / Society Name: Apex Educational and Charitable Trust",
+          "normalized_value": "Apex Educational and Charitable Trust",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 158.8119659423828,
+              "y0": 182.1750030517578,
+              "x1": 347.1209411621094,
+              "y1": 197.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Trust / Society Name: Apex Educational and Charitable Trust",
+            "source_document": "sample_compliant.pdf"
+          }
+        },
+        "student_faculty_ratio": {
+          "field_name": "student_faculty_ratio",
+          "value": "15.0",
+          "raw_text": "Student-Faculty Ratio: 15.0:1",
+          "normalized_value": 15.0,
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 161.8809814453125,
+              "y0": 302.17498779296875,
+              "x1": 183.28697204589844,
+              "y1": 317.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Student-Faculty Ratio: 15.0:1",
+            "source_document": "sample_compliant.pdf"
+          }
+        }
+      },
+      "signatures": {
+        "has_signatures": false,
+        "signature_count": 0,
+        "signatures_detected": false,
+        "integrity_verified": null,
+        "certificate_chain_trusted": null,
+        "signer_identity": null,
+        "signatures": [],
+        "certificate_details": [],
+        "verification_notes": [
+          "No embedded digital signature dictionaries or widgets found (rasterized/scanned document)."
+        ],
+        "anomalies": []
+      }
+    },
+    {
+      "metadata": {
+        "filename": "sample_secondary.pdf",
+        "sha256_hash": "4100db829c324677b1d4f3879f4059e828da032fd2125a6dc0d71fcac09cdd97",
+        "total_pages": 1,
+        "file_size_bytes": 48262,
+        "is_pdf": true,
+        "creation_date": "",
+        "modification_date": ""
+      },
+      "pages": [
+        {
+          "page_number": 1,
+          "text": "ARCHITECTURAL CERTIFICATE & CARPET AREA AFFIDAVIT\n--------------------------------------------------\nApplication ID: AICTE-2026-REG-001\nInstitution Name: Imperial Global Polytechnic\nTrust / Society Name: Apex Educational and Charitable Trust\nTotal Built-up Area: 7500 Sqm\n--------------------------------------------------\n",
+          "word_count": 30,
+          "tables_found": 0,
+          "images_found": 1,
+          "is_scanned_image": false,
+          "ocr_notice": null,
+          "image_perceptual_hashes": [
+            "002b2b2b2b2b2b00"
+          ]
+        }
+      ],
+      "extracted_fields": {
+        "institution_name": {
+          "field_name": "institution_name",
+          "value": "Imperial Global Polytechnic",
+          "raw_text": "Institution Name: Imperial Global Polytechnic",
+          "normalized_value": "Imperial Global Polytechnic",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 135.5909881591797,
+              "y0": 113.17500305175781,
+              "x1": 268.85595703125,
+              "y1": 128.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Institution Name: Imperial Global Polytechnic",
+            "source_document": "sample_secondary.pdf"
+          }
+        },
+        "application_id": {
+          "field_name": "application_id",
+          "value": "AICTE-2026-REG-001",
+          "raw_text": "Application ID: AICTE-2026-REG-001",
+          "normalized_value": "AICTE-2026-REG-001",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 123.97499084472656,
+              "y0": 88.17500305175781,
+              "x1": 234.00796508789062,
+              "y1": 103.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Application ID: AICTE-2026-REG-001",
+            "source_document": "sample_secondary.pdf"
+          }
+        },
+        "built_up_area_sqm": {
+          "field_name": "built_up_area_sqm",
+          "value": "7500",
+          "raw_text": "Total Built-up Area: 7500 Sqm",
+          "normalized_value": 7500.0,
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 147.2069854736328,
+              "y0": 163.1750030517578,
+              "x1": 171.6709747314453,
+              "y1": 178.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Total Built-up Area: 7500 Sqm",
+            "source_document": "sample_secondary.pdf"
+          }
+        },
+        "trust_society_name": {
+          "field_name": "trust_society_name",
+          "value": "Apex Educational and Charitable Trust",
+          "raw_text": "Trust / Society Name: Apex Educational and Charitable Trust",
+          "normalized_value": "Apex Educational and Charitable Trust",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 158.8119659423828,
+              "y0": 138.1750030517578,
+              "x1": 347.1209411621094,
+              "y1": 153.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Trust / Society Name: Apex Educational and Charitable Trust",
+            "source_document": "sample_secondary.pdf"
+          }
+        }
+      },
+      "signatures": {
+        "has_signatures": false,
+        "signature_count": 0,
+        "signatures_detected": false,
+        "integrity_verified": null,
+        "certificate_chain_trusted": null,
+        "signer_identity": null,
+        "signatures": [],
+        "certificate_details": [],
+        "verification_notes": [
+          "No embedded digital signature dictionaries or widgets found (rasterized/scanned document)."
+        ],
+        "anomalies": []
+      }
+    },
+    {
+      "metadata": {
+        "filename": "sample_scanned.pdf",
+        "sha256_hash": "58c92f322a2f84bd76abb8947a1d30071699fe69a69d0acbd4f8bdef974491f2",
+        "total_pages": 1,
+        "file_size_bytes": 2643578,
+        "is_pdf": true,
+        "creation_date": "",
+        "modification_date": ""
+      },
+      "pages": [
+        {
+          "page_number": 1,
+          "text": "SCANNED\nLAND TITLE DEED (SUB-REGISTRARCOPY)\nTotal Land Area: 4.20 Acres\n",
+          "word_count": 10,
+          "tables_found": 0,
+          "images_found": 1,
+          "is_scanned_image": true,
+          "ocr_notice": "OCR applied: successfully extracted text from scanned raster image.",
+          "image_perceptual_hashes": [
+            "7000000000000000"
+          ]
+        }
+      ],
+      "extracted_fields": {
+        "land_area_acres": {
+          "field_name": "land_area_acres",
+          "value": "4.20",
+          "raw_text": "Total Land Area: 4.20 Acres",
+          "normalized_value": 4.2,
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 99.83999633789062,
+              "y0": 103.6800537109375,
+              "x1": 112.74227905273438,
+              "y1": 109.44000244140625,
+              "page_number": 1
+            },
+            "snippet": "Total Land Area: 4.20 Acres",
+            "source_document": "sample_scanned.pdf"
+          }
+        }
+      },
+      "signatures": {
+        "has_signatures": false,
+        "signature_count": 0,
+        "signatures_detected": false,
+        "integrity_verified": null,
+        "certificate_chain_trusted": null,
+        "signer_identity": null,
+        "signatures": [],
+        "certificate_details": [],
+        "verification_notes": [
+          "No embedded digital signature dictionaries or widgets found (rasterized/scanned document)."
+        ],
+        "anomalies": []
+      }
+    },
+    {
+      "metadata": {
+        "filename": "sample_signed.pdf",
+        "sha256_hash": "4b54058ae38bbbeff5d8e9863f6f34191501243e2df56fddab31dbb60e669b81",
+        "total_pages": 1,
+        "file_size_bytes": 93643,
+        "is_pdf": true,
+        "creation_date": "",
+        "modification_date": ""
+      },
+      "pages": [
+        {
+          "page_number": 1,
+          "text": "ALL INDIA COUNCIL FOR TECHNICAL EDUCATION\nINSTITUTIONAL EXTENSION OF APPROVAL APPLICATION\n--------------------------------------------------\nApplication ID: AICTE-2026-REG-001\nPermanent Institute ID: 1-10492839\nInstitution Name: Apex Institute of Technology and Science\nTrust / Society Name: Apex Educational and Charitable Trust\nTotal Land Area: 5.50 Acres\nTotal Built-up Area: 6500 Sqm\nFixed Deposit: INR 2,000,000.00\nFire Safety NOC: VALID\nStudent-Faculty Ratio: 15.0:1\n--------------------------------------------------\nCertified that the spatial and financial standards conform to AICTE norms.\nSIGN\n",
+          "word_count": 70,
+          "tables_found": 0,
+          "images_found": 1,
+          "is_scanned_image": false,
+          "ocr_notice": null,
+          "image_perceptual_hashes": [
+            "002b2b2b2b2b2b00"
+          ]
+        }
+      ],
+      "extracted_fields": {
+        "institution_name": {
+          "field_name": "institution_name",
+          "value": "Apex Institute of Technology and Science",
+          "raw_text": "Institution Name: Apex Institute of Technology and Science",
+          "normalized_value": "Apex Institute of Technology and Science",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 135.5909881591797,
+              "y0": 158.1750030517578,
+              "x1": 337.9799499511719,
+              "y1": 173.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Institution Name: Apex Institute of Technology and Science",
+            "source_document": "sample_signed.pdf"
+          }
+        },
+        "application_id": {
+          "field_name": "application_id",
+          "value": "AICTE-2026-REG-001",
+          "raw_text": "Application ID: AICTE-2026-REG-001",
+          "normalized_value": "AICTE-2026-REG-001",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 123.97499084472656,
+              "y0": 110.17500305175781,
+              "x1": 234.00796508789062,
+              "y1": 125.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Application ID: AICTE-2026-REG-001",
+            "source_document": "sample_signed.pdf"
+          }
+        },
+        "aicte_permanent_id": {
+          "field_name": "aicte_permanent_id",
+          "value": "1-10492839",
+          "raw_text": "Permanent Institute ID: 1-10492839",
+          "normalized_value": "1-10492839",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 165.5549774169922,
+              "y0": 134.1750030517578,
+              "x1": 224.26194763183594,
+              "y1": 149.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Permanent Institute ID: 1-10492839",
+            "source_document": "sample_signed.pdf"
+          }
+        },
+        "land_area_acres": {
+          "field_name": "land_area_acres",
+          "value": "5.50",
+          "raw_text": "Total Land Area: 5.50 Acres",
+          "normalized_value": 5.5,
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 134.3809814453125,
+              "y0": 206.1750030517578,
+              "x1": 155.78697204589844,
+              "y1": 221.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Total Land Area: 5.50 Acres",
+            "source_document": "sample_signed.pdf"
+          }
+        },
+        "built_up_area_sqm": {
+          "field_name": "built_up_area_sqm",
+          "value": "6500",
+          "raw_text": "Total Built-up Area: 6500 Sqm",
+          "normalized_value": 6500.0,
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 147.2069854736328,
+              "y0": 230.1750030517578,
+              "x1": 171.6709747314453,
+              "y1": 245.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Total Built-up Area: 6500 Sqm",
+            "source_document": "sample_signed.pdf"
+          }
+        },
+        "fdr_amount_inr": {
+          "field_name": "fdr_amount_inr",
+          "value": "2,000,000.00",
+          "raw_text": "Fixed Deposit: INR 2,000,000.00",
+          "normalized_value": 2000000.0,
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 145.35897827148438,
+              "y0": 254.1750030517578,
+              "x1": 209.5769500732422,
+              "y1": 269.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Fixed Deposit: INR 2,000,000.00",
+            "source_document": "sample_signed.pdf"
+          }
+        },
+        "fire_safety_noc_status": {
+          "field_name": "fire_safety_noc_status",
+          "value": "VALID",
+          "raw_text": "Fire Safety NOC: VALID",
+          "normalized_value": "VALID",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 136.8009796142578,
+              "y0": 278.17498779296875,
+              "x1": 168.5909881591797,
+              "y1": 293.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Fire Safety NOC: VALID",
+            "source_document": "sample_signed.pdf"
+          }
+        },
+        "trust_society_name": {
+          "field_name": "trust_society_name",
+          "value": "Apex Educational and Charitable Trust",
+          "raw_text": "Trust / Society Name: Apex Educational and Charitable Trust",
+          "normalized_value": "Apex Educational and Charitable Trust",
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 158.8119659423828,
+              "y0": 182.1750030517578,
+              "x1": 347.1209411621094,
+              "y1": 197.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Trust / Society Name: Apex Educational and Charitable Trust",
+            "source_document": "sample_signed.pdf"
+          }
+        },
+        "student_faculty_ratio": {
+          "field_name": "student_faculty_ratio",
+          "value": "15.0",
+          "raw_text": "Student-Faculty Ratio: 15.0:1",
+          "normalized_value": 15.0,
+          "confidence": 1.0,
+          "evidence": {
+            "page_number": 1,
+            "bbox": {
+              "x0": 161.8809814453125,
+              "y0": 302.17498779296875,
+              "x1": 183.28697204589844,
+              "y1": 317.28900146484375,
+              "page_number": 1
+            },
+            "snippet": "Student-Faculty Ratio: 15.0:1",
+            "source_document": "sample_signed.pdf"
+          }
+        }
+      },
+      "signatures": {
+        "has_signatures": true,
+        "signature_count": 1,
+        "signatures_detected": true,
+        "integrity_verified": null,
+        "certificate_chain_trusted": null,
+        "signer_identity": null,
+        "signatures": [
+          {
+            "page": 1,
+            "field_name": "AuthorizedSignatoryDSC",
+            "rect": [
+              50.0,
+              720.0,
+              250.0,
+              800.0
+            ],
+            "type": "SignatureWidget"
+          }
+        ],
+        "certificate_details": [],
+        "verification_notes": [
+          "Detected 1 cryptographic signature structure(s) in PDF.",
+          "Byte-range integrity and PKCS#7 hash digest unverified (requires pyHanko or cryptographic provider).",
+          "Certificate chain trust unverified (no local CCA/Root CA trust store configured)."
+        ],
+        "anomalies": []
+      }
+    }
+  ],
+  "rule_evaluations": [
+    {
+      "rule_id": "RULE-LAND-001",
+      "rule_name": "Minimum Contiguous Land Requirement",
+      "rule_category": "Land",
+      "status": "PASS",
+      "severity": "INFO",
+      "statutory_standard": ">= 2.5 acres (Configured default)",
+      "is_authoritatively_verified": false,
+      "observed_value": "5.5 acres",
+      "difference": "+3.00 acres",
+      "deficiency_reason": null,
+      "evidence": [
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 134.3809814453125,
+            "y0": 206.1750030517578,
+            "x1": 155.78697204589844,
+            "y1": 221.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Total Land Area: 5.50 Acres",
+          "source_document": "sample_compliant.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 99.83999633789062,
+            "y0": 103.6800537109375,
+            "x1": 112.74227905273438,
+            "y1": 109.44000244140625,
+            "page_number": 1
+          },
+          "snippet": "Total Land Area: 4.20 Acres",
+          "source_document": "sample_scanned.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 134.3809814453125,
+            "y0": 206.1750030517578,
+            "x1": 155.78697204589844,
+            "y1": 221.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Total Land Area: 5.50 Acres",
+          "source_document": "sample_signed.pdf"
+        }
+      ]
+    },
+    {
+      "rule_id": "RULE-ARCH-002",
+      "rule_name": "Instructional & Administrative Built-Up Area Norm",
+      "rule_category": "Building",
+      "status": "PASS",
+      "severity": "INFO",
+      "statutory_standard": ">= 4000.0 sqm (Configured default)",
+      "is_authoritatively_verified": false,
+      "observed_value": "6500.0 sqm",
+      "difference": "+2500.0 sqm",
+      "deficiency_reason": null,
+      "evidence": [
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 147.2069854736328,
+            "y0": 230.1750030517578,
+            "x1": 171.6709747314453,
+            "y1": 245.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Total Built-up Area: 6500 Sqm",
+          "source_document": "sample_compliant.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 147.2069854736328,
+            "y0": 163.1750030517578,
+            "x1": 171.6709747314453,
+            "y1": 178.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Total Built-up Area: 7500 Sqm",
+          "source_document": "sample_secondary.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 147.2069854736328,
+            "y0": 230.1750030517578,
+            "x1": 171.6709747314453,
+            "y1": 245.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Total Built-up Area: 6500 Sqm",
+          "source_document": "sample_signed.pdf"
+        }
+      ]
+    },
+    {
+      "rule_id": "RULE-FIN-003",
+      "rule_name": "Statutory Joint FDR / Security Deposit",
+      "rule_category": "FDR",
+      "status": "PASS",
+      "severity": "INFO",
+      "statutory_standard": ">= INR 1,500,000.00 (Configured default)",
+      "is_authoritatively_verified": false,
+      "observed_value": "INR 2,000,000.00",
+      "difference": "INR +500,000.00",
+      "deficiency_reason": null,
+      "evidence": [
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 145.35897827148438,
+            "y0": 254.1750030517578,
+            "x1": 209.5769500732422,
+            "y1": 269.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Fixed Deposit: INR 2,000,000.00",
+          "source_document": "sample_compliant.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 145.35897827148438,
+            "y0": 254.1750030517578,
+            "x1": 209.5769500732422,
+            "y1": 269.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Fixed Deposit: INR 2,000,000.00",
+          "source_document": "sample_signed.pdf"
+        }
+      ]
+    },
+    {
+      "rule_id": "RULE-FIRE-004",
+      "rule_name": "Valid Fire & Life Safety Certificate",
+      "rule_category": "FireSafety",
+      "status": "PASS",
+      "severity": "INFO",
+      "statutory_standard": "Active/Valid Fire NOC from State Fire Authority",
+      "is_authoritatively_verified": true,
+      "observed_value": "VALID",
+      "difference": null,
+      "deficiency_reason": null,
+      "evidence": [
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 136.8009796142578,
+            "y0": 278.17498779296875,
+            "x1": 168.5909881591797,
+            "y1": 293.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Fire Safety NOC: VALID",
+          "source_document": "sample_compliant.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 136.8009796142578,
+            "y0": 278.17498779296875,
+            "x1": 168.5909881591797,
+            "y1": 293.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Fire Safety NOC: VALID",
+          "source_document": "sample_signed.pdf"
+        }
+      ]
+    },
+    {
+      "rule_id": "RULE-ACAD-005",
+      "rule_name": "Cadre & Student-to-Faculty Ratio (SFR)",
+      "rule_category": "Faculty",
+      "status": "PASS",
+      "severity": "INFO",
+      "statutory_standard": "<= 20.0:1 (AICTE Handbook Mandate)",
+      "is_authoritatively_verified": true,
+      "observed_value": "15.0:1",
+      "difference": "-5.0",
+      "deficiency_reason": null,
+      "evidence": [
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 161.8809814453125,
+            "y0": 302.17498779296875,
+            "x1": 183.28697204589844,
+            "y1": 317.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Student-Faculty Ratio: 15.0:1",
+          "source_document": "sample_compliant.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 161.8809814453125,
+            "y0": 302.17498779296875,
+            "x1": 183.28697204589844,
+            "y1": 317.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Student-Faculty Ratio: 15.0:1",
+          "source_document": "sample_signed.pdf"
+        }
+      ]
+    },
+    {
+      "rule_id": "RULE-AUTH-006",
+      "rule_name": "Cryptographic Document Authentication Mandate",
+      "rule_category": "Authentication",
+      "status": "PASS",
+      "severity": "INFO",
+      "statutory_standard": "Valid DSC/PKCS#7 signature on statutory filings",
+      "is_authoritatively_verified": true,
+      "observed_value": "1 signed documents found",
+      "difference": null,
+      "deficiency_reason": null,
+      "evidence": []
+    }
+  ],
+  "consistency_evaluations": [
+    {
+      "check_name": "Institution Name Reconciliation",
+      "field_compared": "institution_name",
+      "is_consistent": false,
+      "discrepancy_details": "Discrepancy in institution names: 'Apex Institute of Technology and Science' in sample_compliant.pdf vs 'Imperial Global Polytechnic' in sample_secondary.pdf",
+      "severity": "DEFICIENCY",
+      "documents_involved": [
+        "sample_compliant.pdf",
+        "sample_secondary.pdf",
+        "sample_signed.pdf"
+      ],
+      "evidences": [
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 135.5909881591797,
+            "y0": 158.1750030517578,
+            "x1": 337.9799499511719,
+            "y1": 173.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Institution Name: Apex Institute of Technology and Science",
+          "source_document": "sample_compliant.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 135.5909881591797,
+            "y0": 113.17500305175781,
+            "x1": 268.85595703125,
+            "y1": 128.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Institution Name: Imperial Global Polytechnic",
+          "source_document": "sample_secondary.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 135.5909881591797,
+            "y0": 158.1750030517578,
+            "x1": 337.9799499511719,
+            "y1": 173.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Institution Name: Apex Institute of Technology and Science",
+          "source_document": "sample_signed.pdf"
+        }
+      ]
+    },
+    {
+      "check_name": "Application Identifier Matching",
+      "field_compared": "application_id",
+      "is_consistent": true,
+      "discrepancy_details": null,
+      "severity": "INFO",
+      "documents_involved": [
+        "sample_compliant.pdf",
+        "sample_secondary.pdf",
+        "sample_signed.pdf"
+      ],
+      "evidences": [
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 123.97499084472656,
+            "y0": 110.17500305175781,
+            "x1": 234.00796508789062,
+            "y1": 125.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Application ID: AICTE-2026-REG-001",
+          "source_document": "sample_compliant.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 123.97499084472656,
+            "y0": 88.17500305175781,
+            "x1": 234.00796508789062,
+            "y1": 103.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Application ID: AICTE-2026-REG-001",
+          "source_document": "sample_secondary.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 123.97499084472656,
+            "y0": 110.17500305175781,
+            "x1": 234.00796508789062,
+            "y1": 125.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Application ID: AICTE-2026-REG-001",
+          "source_document": "sample_signed.pdf"
+        }
+      ]
+    },
+    {
+      "check_name": "Sponsoring Trust / Society Verification",
+      "field_compared": "trust_society_name",
+      "is_consistent": true,
+      "discrepancy_details": null,
+      "severity": "INFO",
+      "documents_involved": [
+        "sample_compliant.pdf",
+        "sample_secondary.pdf",
+        "sample_signed.pdf"
+      ],
+      "evidences": [
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 158.8119659423828,
+            "y0": 182.1750030517578,
+            "x1": 347.1209411621094,
+            "y1": 197.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Trust / Society Name: Apex Educational and Charitable Trust",
+          "source_document": "sample_compliant.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 158.8119659423828,
+            "y0": 138.1750030517578,
+            "x1": 347.1209411621094,
+            "y1": 153.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Trust / Society Name: Apex Educational and Charitable Trust",
+          "source_document": "sample_secondary.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 158.8119659423828,
+            "y0": 182.1750030517578,
+            "x1": 347.1209411621094,
+            "y1": 197.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Trust / Society Name: Apex Educational and Charitable Trust",
+          "source_document": "sample_signed.pdf"
+        }
+      ]
+    },
+    {
+      "check_name": "Spatial FAR & Land Feasibility Cross-Check",
+      "field_compared": "spatial_far",
+      "is_consistent": true,
+      "discrepancy_details": null,
+      "severity": "INFO",
+      "documents_involved": [
+        "sample_compliant.pdf",
+        "sample_compliant.pdf"
+      ],
+      "evidences": [
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 134.3809814453125,
+            "y0": 206.1750030517578,
+            "x1": 155.78697204589844,
+            "y1": 221.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Total Land Area: 5.50 Acres",
+          "source_document": "sample_compliant.pdf"
+        },
+        {
+          "page_number": 1,
+          "bbox": {
+            "x0": 147.2069854736328,
+            "y0": 230.1750030517578,
+            "x1": 171.6709747314453,
+            "y1": 245.28900146484375,
+            "page_number": 1
+          },
+          "snippet": "Total Built-up Area: 6500 Sqm",
+          "source_document": "sample_compliant.pdf"
+        }
+      ]
+    }
+  ],
+  "duplicate_evaluations": {
+    "exact_duplicates": [],
+    "perceptual_image_duplicates": [
+      {
+        "distance": 0,
+        "image_a": {
+          "document": "sample_compliant.pdf",
+          "page": 1,
+          "index": 1,
+          "hash": "002b2b2b2b2b2b00"
+        },
+        "image_b": {
+          "document": "sample_secondary.pdf",
+          "page": 1,
+          "index": 1,
+          "hash": "002b2b2b2b2b2b00"
+        },
+        "finding": "Identical or reused raster image asset detected across distinct pages/documents"
+      },
+      {
+        "distance": 0,
+        "image_a": {
+          "document": "sample_compliant.pdf",
+          "page": 1,
+          "index": 1,
+          "hash": "002b2b2b2b2b2b00"
+        },
+        "image_b": {
+          "document": "sample_signed.pdf",
+          "page": 1,
+          "index": 1,
+          "hash": "002b2b2b2b2b2b00"
+        },
+        "finding": "Identical or reused raster image asset detected across distinct pages/documents"
+      },
+      {
+        "distance": 0,
+        "image_a": {
+          "document": "sample_secondary.pdf",
+          "page": 1,
+          "index": 1,
+          "hash": "002b2b2b2b2b2b00"
+        },
+        "image_b": {
+          "document": "sample_signed.pdf",
+          "page": 1,
+          "index": 1,
+          "hash": "002b2b2b2b2b2b00"
+        },
+        "finding": "Identical or reused raster image asset detected across distinct pages/documents"
+      }
+    ],
+    "has_duplicate_findings": true
+  },
+  "risk_tier": "CLARIFICATION",
+  "risk_score": 45.0,
+  "findings_audit_trail": [
+    {
+      "category": "Cross-Document Reconciliation",
+      "finding": "Reconciliation Note [Institution Name Reconciliation]: Discrepancy in institution names: 'Apex Institute of Technology and Science' in sample_compliant.pdf vs 'Imperial Global Polytechnic' in sample_secondary.pdf",
+      "severity": "DEFICIENCY",
+      "score_penalty": 15.0
+    },
+    {
+      "category": "Duplicate Detection",
+      "finding": "Visual Asset Duplication detected: 3 image asset(s) match across pages/files.",
+      "severity": "DEFICIENCY",
+      "score_penalty": 30.0
+    }
+  ],
+  "critical_deficiencies": [
+    "Visual Asset Duplication detected: 3 image asset(s) match across pages/files."
+  ],
+  "clarification_notes": [
+    "Reconciliation Note [Institution Name Reconciliation]: Discrepancy in institution names: 'Apex Institute of Technology and Science' in sample_compliant.pdf vs 'Imperial Global Polytechnic' in sample_secondary.pdf"
+  ],
+  "recommendations": [
+    "Submit clarification or affidavit for: Institution Name Reconciliation",
+    "Scrutinize visual documentation for potential asset reuse via Expert Visit Committee (EVC).",
+    "Issue automated deficiency memo; allow institutional response within 14 calendar days."
+  ],
+  "disclaimer": "Notice: Risk scores, duplicate detections, and rule findings are algorithmic triage observations to prioritize human committee review. They do not constitute proof of fraud or forgery, nor automatic grounds for legal rejection."
+}
