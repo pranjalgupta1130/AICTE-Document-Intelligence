@@ -26,4 +26,12 @@ class Settings(BaseModel):
     # Synthetic / Demo mode
     DEMO_MODE: bool = True
 
+    # Ingestion & Parsing Safeguards
+    MAX_CSV_UPLOAD_BYTES: int = int(os.getenv("MAX_CSV_UPLOAD_BYTES", 50 * 1024 * 1024))   # 50 MB
+    MAX_XLSX_UPLOAD_BYTES: int = int(os.getenv("MAX_XLSX_UPLOAD_BYTES", 25 * 1024 * 1024)) # 25 MB
+    MAX_IMPORT_ROWS: int = int(os.getenv("MAX_IMPORT_ROWS", 100000))                        # 100,000 rows
+    MAX_CELL_LENGTH: int = int(os.getenv("MAX_CELL_LENGTH", 10000))                         # 10,000 chars per cell
+    MAX_ZIP_ENTRIES: int = int(os.getenv("MAX_ZIP_ENTRIES", 100))                           # XLSX zip bomb entry limit
+    MAX_UNCOMPRESSED_XLSX_BYTES: int = int(os.getenv("MAX_UNCOMPRESSED_XLSX_BYTES", 100 * 1024 * 1024)) # 100 MB decompressed limit
+
 settings = Settings()

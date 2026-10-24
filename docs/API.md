@@ -118,7 +118,170 @@ Query approved intake capacity by institution, programme, and academic year.
 
 ---
 
-## 3. Core System Health
+## 3. Data Ingestion & Persistence (Phase 2)
+
+### GET `/api/v1/imports/template`
+Download standard CSV import template with required AICTE student fields.
+- **Requires Authentication**: Yes (`Bearer <token>`)
+- **Response**: `text/csv` attachment (`apaar_student_template.csv`)
+
+---
+
+### POST `/api/v1/imports/preview`
+Multipart upload preview for tabular datasets (`.csv`, `.xlsx`).
+- Inspects headers, suggests field mappings, checks structure, and returns up to 10 sample rows without writing to the database.
+
+**Form Data:**
+- `file`: CSV or XLSX file (required)
+
+**Response (`200 OK`):**
+```json
+{
+  "filename": "students_2026.csv",
+  "file_type": "CSV",
+  "detected_columns": ["APAAR ID", "Student Name", "Roll No", "Programme ID", "Academic Year"],
+  "suggested_mapping": {
+    "apaar_id": "APAAR ID",
+    "student_name": "Student Name",
+    "institution_student_id": "Roll No",
+    "programme_id": "Programme ID",
+    "academic_year": "Academic Year"
+  },
+  "total_preview_rows": 120,
+  "sample_rows": [
+    {
+      "APAAR ID": "987654321012",
+      "Student Name": "Student One",
+      "Roll No": "APEX-2026-001",
+      "Programme ID": "PROG-001-CSE",
+      "Academic Year": "2026-2027",
+      "_file_row_num": 2
+    }
+  ],
+  "structural_errors": [],
+  "is_valid_structure": true
+}
+```
+
+---
+
+### POST `/api/v1/imports`
+Ingest and transactionally persist student records into an `ImportBatch`.
+- Enforces institution scoping: Institution users can only ingest into their own institution.
+- Auto-increments batch `version` per institution and academic year.
+- Validates row format, maps columns, and records row-level findings in `validation_findings`.
+- Emits an `AuditEvent` with action `IMPORT_UPLOAD`.
+
+**Form Data:**
+- `file`: CSV or XLSX file (required)
+- `academic_year`: Enrolled academic year (e.g. `2026-2027`)
+- `programme_id`: Default programme fallback
+- `institution_id`: Explicit institution (validated against caller scope; rejected if cross-institution)
+- `column_mapping` (or `mapping`): JSON string of field-to-column overrides
+
+**Response (`200 OK`):**
+```json
+{
+  "batch_id": "BATCH-20261024-5ECD1E",
+  "institution_id": "INST-001",
+  "source_filename": "students_2026.csv",
+  "academic_year": "2026-2027",
+  "version": 1,
+  "status": "DRAFT",
+  "total_rows": 120,
+  "valid_rows": 118,
+  "error_rows": 2,
+  "warning_rows": 1,
+  "row_errors": [
+    {
+      "row_number": 15,
+      "field": "institution_student_id",
+      "value": "",
+      "message": "Institution Student ID (roll/registration number) is mandatory."
+    }
+  ]
+}
+```
+
+---
+
+## 4. Import Batches & Lineage
+
+### GET `/api/v1/batches`
+List import batches with counts, lineage, and lifecycle status.
+- Strictly isolated to the caller's institution unless caller is `AICTE_ADMIN` or `DEMO_ADMIN`.
+
+**Query Parameters:**
+- `institution_id` (optional for AICTE; forced to caller's institution)
+- `academic_year` (optional filter)
+- `status` (optional filter: `DRAFT`, `VALIDATED`, etc.)
+- `limit` (default: 50)
+- `offset` (default: 0)
+
+**Response (`200 OK`):**
+```json
+{
+  "items": [
+    {
+      "id": "BATCH-20261024-5ECD1E",
+      "institution_id": "INST-001",
+      "uploader_user_id": "usr-apex-op-01",
+      "source_filename": "students_2026.csv",
+      "academic_year": "2026-2027",
+      "version": 1,
+      "status": "DRAFT",
+      "total_rows": 120,
+      "valid_rows": 118,
+      "error_rows": 2,
+      "warning_rows": 1,
+      "created_at": "2026-10-24T10:15:30Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+### GET `/api/v1/batches/{batch_id}`
+Retrieve detailed status and counts for a specific batch. Enforces institution isolation.
+
+---
+
+### GET `/api/v1/batches/{batch_id}/findings`
+Retrieve paginated row-level parsing and validation findings for a batch.
+
+**Query Parameters:**
+- `severity` (optional filter: `BLOCKING_ERROR`, `WARNING`, `INFO`)
+- `limit` (default: 50)
+- `offset` (default: 0)
+
+**Response (`200 OK`):**
+```json
+{
+  "items": [
+    {
+      "id": "fnd-9b342e14a1bc",
+      "batch_id": "BATCH-20261024-5ECD1E",
+      "record_id": null,
+      "row_number": 15,
+      "field_name": "institution_student_id",
+      "rule_code": "RULE-REQ-002",
+      "severity": "BLOCKING_ERROR",
+      "message": "Missing required institution student identifier.",
+      "actual_value": null,
+      "suggested_action": "Provide college student roll or registration number.",
+      "status": "OPEN",
+      "created_at": "2026-10-24T10:15:31Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+## 5. Core System Health
 
 ### GET `/health`
 System liveness and readiness probe.
@@ -136,7 +299,7 @@ System liveness and readiness probe.
 
 ---
 
-## 4. Standard Error Response Shape
+## 6. Standard Error Response Shape
 
 All non-2xx responses follow a uniform structure:
 
@@ -157,22 +320,20 @@ All non-2xx responses follow a uniform structure:
 - `PERMISSION_DENIED` (403): User role lacks access to endpoint or resource.
 - `INSTITUTION_SCOPE_VIOLATION` (403): Attempt to query or alter another institution's data.
 - `RESOURCE_NOT_FOUND` (404): Entity not found.
+- `EMPTY_FILE` (400): File payload is 0 bytes.
+- `UNSUPPORTED_MEDIA_TYPE` (415): File is not CSV or XLSX.
 - `VALIDATION_ERROR` (422): Malformed payload or query parameter.
 - `INTERNAL_SERVER_ERROR` (500): Unhandled exception (sanitized; stack traces never leaked).
 
 ---
 
-## 5. Upcoming Phase Contracts (Phases 2 – 5)
+## 7. Upcoming Phase Contracts (Phases 3 – 5)
 
 For coordination with Member 2 (Frontend) and Member 3 (QA):
 
 | Method | Path | Phase | Description |
 |---|---|---|---|
-| `POST` | `/api/v1/imports/preview` | Phase 2 | Multipart CSV/XLSX upload, parse headers, validate types, sample preview |
-| `POST` | `/api/v1/imports` | Phase 2 | Commit parsed file, persist `ImportBatch` and raw `StudentRecord` rows |
 | `POST` | `/api/v1/batches/{id}/validate` | Phase 3 | Execute rules engine, compute findings, calculate intake exceedance |
-| `GET` | `/api/v1/batches/{id}` | Phase 3 | Get batch status, summary metrics, completion state |
-| `GET` | `/api/v1/batches/{id}/findings` | Phase 3 | Paginated findings with rule, severity, record reference, suggested action |
 | `POST` | `/api/v1/batches/{id}/submit` | Phase 4 | Transition batch from Draft/Validated to Submitted; locks batch |
 | `GET` | `/api/v1/dashboard/institution` | Phase 4 | Institution metrics: total records, valid/invalid, missing APAAR, intake % |
 | `GET` | `/api/v1/dashboard/aicte` | Phase 4 | AICTE monitoring: aggregate enrollment, exception queue, duplicate flags |
