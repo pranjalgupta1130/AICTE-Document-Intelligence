@@ -9,14 +9,7 @@ import { AuditLogsReportsPage } from './pages/AuditLogsReportsPage';
 import { AuthSession } from './types/auth';
 
 export const App: React.FC = () => {
-  const [session, setSession] = useState<AuthSession | null>(() => {
-    try {
-      const stored = localStorage.getItem('apaar_auth_session');
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [session, setSession] = useState<AuthSession | null>(null);
 
   const [currentTab, setCurrentTab] = useState<string>('aicte-review');
   const [selectedApaarId, setSelectedApaarId] = useState<string>('9082-4412-8821');
