@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import uuid
-from sqlalchemy import Column, String, Float, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, String, Float, DateTime, Enum, ForeignKey, Index, case
 from sqlalchemy.orm import relationship
 
 from backend.app.db.session import Base
@@ -8,6 +8,14 @@ from backend.app.models.enums import MatchStatus
 
 class MatchCandidate(Base):
     __tablename__ = "match_candidates"
+    __table_args__ = (
+        Index(
+            "uq_match_candidates_pair",
+            case((Column("record_a_id") < Column("record_b_id"), Column("record_a_id")), else_=Column("record_b_id")),
+            case((Column("record_a_id") < Column("record_b_id"), Column("record_b_id")), else_=Column("record_a_id")),
+            unique=True,
+        ),
+    )
 
     id = Column(String(64), primary_key=True, default=lambda: f"mat-{uuid.uuid4().hex[:12]}")
     record_a_id = Column(String(64), ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)

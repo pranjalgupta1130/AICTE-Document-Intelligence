@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
 from backend.app.core.errors import AppException, NotFoundError, PermissionDeniedError
 from backend.app.core.permissions import enforce_institution_scope
@@ -88,19 +88,17 @@ def preview_import_data(filename: str, content: bytes) -> ImportPreviewResponse:
 def allocate_concurrency_safe_batch_version(
     db: Session,
     institution_id: str,
-    academic_year: str,
-    max_retries: int = 5
+    academic_year: str
 ) -> int:
     """
-    Safely allocate next batch version under concurrent requests.
+    Safely compute next batch version for a given institution and academic year.
+    Must be paired with the database unique constraint and commit retry handling.
     """
-    for _ in range(max_retries):
-        latest = db.query(func.max(ImportBatch.version)).filter(
-            ImportBatch.institution_id == institution_id,
-            ImportBatch.academic_year == academic_year
-        ).scalar() or 0
-        return latest + 1
-    return 1
+    latest = db.query(func.max(ImportBatch.version)).filter(
+        ImportBatch.institution_id == institution_id,
+        ImportBatch.academic_year == academic_year
+    ).scalar() or 0
+    return latest + 1
 
 def commit_import_data(
     db: Session,
@@ -399,58 +397,85 @@ def commit_import_data(
             )
             student_records.append(student)
 
-    # 6. ATOMIC TRANSACTION COMMIT / ROLLBACK
-    try:
-        next_version = allocate_concurrency_safe_batch_version(db, scoped_inst_id, resolved_academic_year)
-        batch = ImportBatch(
-            id=batch_id,
-            institution_id=scoped_inst_id,
-            uploader_user_id=current_user.id,
-            source_filename=filename,
-            academic_year=resolved_academic_year,
-            version=next_version,
-            status=BatchStatus.DRAFT,
-            total_rows=len(rows),
-            valid_rows=valid_count,
-            error_rows=error_count,
-            warning_rows=warning_count
-        )
-        db.add(batch)
+    # 6. ATOMIC TRANSACTION COMMIT WITH CONCURRENCY RETRY
+    max_commit_retries = 5
+    committed = False
+    last_error: Optional[Exception] = None
 
-        if student_records:
-            db.add_all(student_records)
-        if findings:
-            db.add_all(findings)
+    for attempt in range(max_commit_retries):
+        try:
+            next_version = allocate_concurrency_safe_batch_version(db, scoped_inst_id, resolved_academic_year)
+            batch = ImportBatch(
+                id=batch_id,
+                institution_id=scoped_inst_id,
+                uploader_user_id=current_user.id,
+                source_filename=filename,
+                academic_year=resolved_academic_year,
+                version=next_version,
+                status=BatchStatus.DRAFT,
+                total_rows=len(rows),
+                valid_rows=valid_count,
+                error_rows=error_count,
+                warning_rows=warning_count
+            )
+            db.add(batch)
 
-        audit = AuditEvent(
-            actor_user_id=current_user.id,
-            actor_email=current_user.email,
-            actor_role=current_user.role.value,
-            institution_id=scoped_inst_id,
-            action=AuditAction.IMPORT_UPLOAD,
-            object_type="IMPORT_BATCH",
-            object_id=batch.id,
-            outcome="SUCCESS" if error_count == 0 else "PARTIAL",
-            details=f"File '{filename}' imported (v{next_version}): {valid_count} valid, {error_count} errors, {warning_count} warnings."
-        )
-        db.add(audit)
+            if student_records:
+                db.add_all(student_records)
+            if findings:
+                db.add_all(findings)
 
-        # Single atomic commit for batch, records, findings, and audit event
-        db.commit()
+            audit = AuditEvent(
+                actor_user_id=current_user.id,
+                actor_email=current_user.email,
+                actor_role=current_user.role.value,
+                institution_id=scoped_inst_id,
+                action=AuditAction.IMPORT_UPLOAD,
+                object_type="IMPORT_BATCH",
+                object_id=batch.id,
+                outcome="SUCCESS" if error_count == 0 else "PARTIAL",
+                details=f"File '{filename}' imported (v{next_version}): {valid_count} valid, {error_count} errors, {warning_count} warnings."
+            )
+            db.add(audit)
 
-    except SQLAlchemyError as exc:
-        db.rollback()
+            # Single atomic commit for batch, records, findings, and audit event
+            db.commit()
+            committed = True
+            break
+
+        except IntegrityError as exc:
+            db.rollback()
+            last_error = exc
+            err_msg = str(exc).lower()
+            # If the conflict is on the batch version unique constraint, retry with next version
+            if "uq_batch_institution_ay_version" in err_msg or "import_batches.version" in err_msg:
+                continue
+            # Otherwise, unexpected integrity error (e.g. foreign key or other constraint)
+            raise AppException(
+                code="DATABASE_INTEGRITY_ERROR",
+                message=f"Database constraint violation during import: {str(exc)}",
+                status_code=409
+            )
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise AppException(
+                code="DATABASE_TRANSACTION_FAILED",
+                message=f"Failed to persist student import transaction: {str(exc)}",
+                status_code=500
+            )
+        except Exception as exc:
+            db.rollback()
+            raise AppException(
+                code="IMPORT_PROCESSING_FAILED",
+                message=f"An unexpected error occurred during import persistence: {str(exc)}",
+                status_code=500
+            )
+
+    if not committed:
         raise AppException(
-            code="DATABASE_TRANSACTION_FAILED",
-            message=f"Failed to persist student import transaction: {str(exc)}",
-            status_code=500
-        )
-    except Exception as exc:
-        db.rollback()
-        raise AppException(
-            code="IMPORT_PROCESSING_FAILED",
-            message=f"An unexpected error occurred during import persistence: {str(exc)}",
-            status_code=500
+            code="BATCH_VERSION_CONFLICT",
+            message=f"Failed to allocate unique batch version after {max_commit_retries} concurrent attempts: {str(last_error)}",
+            status_code=409
         )
 
     return ImportCommitResponse(

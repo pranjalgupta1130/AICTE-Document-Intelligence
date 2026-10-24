@@ -3,6 +3,7 @@ import uuid
 from typing import Dict, List, Optional, Set, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from backend.app.core.config import settings
 from backend.app.core.errors import AppException, NotFoundError, PermissionDeniedError
@@ -94,6 +95,27 @@ def check_apaar_syntax(apaar_id: Optional[str]) -> Tuple[bool, Optional[str], Fi
 
     return True, None, FindingSeverity.INFO
 
+def is_match_candidate_pair_conflict(exc: IntegrityError) -> bool:
+    """
+    Determine if an IntegrityError was caused specifically by a collision on the
+    match_candidates unique pair index (uq_match_candidates_pair).
+    Inspects exception strings, dialect-specific orig attributes, and table references
+    while avoiding misclassification of foreign key or other column constraints.
+    """
+    orig_str = str(getattr(exc, "orig", exc)).lower()
+    full_str = str(exc).lower()
+
+    # Direct match on the unique index name
+    if "uq_match_candidates_pair" in full_str or "uq_match_candidates_pair" in orig_str:
+        return True
+
+    # SQLite specific index conflict pattern
+    if "unique constraint failed" in orig_str or "unique constraint failed" in full_str:
+        if "match_candidates" in orig_str or "match_candidates" in full_str:
+            return True
+
+    return False
+
 # ------------------------------------------------------------------------------
 # Core Validation & Reconciliation Engine
 # ------------------------------------------------------------------------------
@@ -169,14 +191,20 @@ def execute_batch_validation(
     hist_inst_student_ids = {r.institution_student_id: r for r in other_institution_records if r.institution_student_id}
     hist_apaars = {r.apaar_id: r for r in other_institution_records if r.apaar_id}
 
+    # Collect distinct non-null APAAR IDs present in this batch
+    batch_apaars = list({r.apaar_id for r in records if r.apaar_id})
+
     # Preload cross-institution records for central duplicate detection (AICTE scope)
-    cross_inst_apaars = {
-        r.apaar_id: r for r in db.query(StudentRecord).filter(
-            StudentRecord.institution_id != inst_id,
-            StudentRecord.academic_year == acad_year,
-            StudentRecord.apaar_id.isnot(None)
-        ).all()
-    }
+    # Filtered strictly to the APAAR IDs in the current batch to avoid unbounded table scans
+    cross_inst_apaars = {}
+    if batch_apaars:
+        cross_inst_apaars = {
+            r.apaar_id: r for r in db.query(StudentRecord).filter(
+                StudentRecord.institution_id != inst_id,
+                StudentRecord.academic_year == acad_year,
+                StudentRecord.apaar_id.in_(batch_apaars)
+            ).all()
+        }
 
     # Program enrolled counts accumulator for cumulative intake reconciliation
     # We initialize with eligible enrolled students from prior batches of the same institution, programme and academic year
@@ -372,17 +400,20 @@ def execute_batch_validation(
                 ))
 
                 # Stage or update MatchCandidate entity for AICTE exception queue symmetrically
+                rec_a_id, rec_b_id = (rec.id, cross_match.id) if rec.id < cross_match.id else (cross_match.id, rec.id)
+                inst_a_id, inst_b_id = (inst_id, cross_match.institution_id) if rec.id < cross_match.id else (cross_match.institution_id, inst_id)
+
                 candidate = db.query(MatchCandidate).filter(
-                    ((MatchCandidate.record_a_id == rec.id) & (MatchCandidate.record_b_id == cross_match.id)) |
-                    ((MatchCandidate.record_a_id == cross_match.id) & (MatchCandidate.record_b_id == rec.id))
+                    ((MatchCandidate.record_a_id == rec_a_id) & (MatchCandidate.record_b_id == rec_b_id)) |
+                    ((MatchCandidate.record_a_id == rec_b_id) & (MatchCandidate.record_b_id == rec_a_id))
                 ).first()
                 if not candidate:
                     candidate = MatchCandidate(
                         id=f"mat-{uuid.uuid4().hex[:12]}",
-                        record_a_id=rec.id,
-                        record_b_id=cross_match.id,
-                        institution_a_id=inst_id,
-                        institution_b_id=cross_match.institution_id,
+                        record_a_id=rec_a_id,
+                        record_b_id=rec_b_id,
+                        institution_a_id=inst_a_id,
+                        institution_b_id=inst_b_id,
                         matching_signal="EXACT_APAAR_CROSS_INSTITUTION",
                         confidence=1.0,
                         status=MatchStatus.CANDIDATE
@@ -473,7 +504,7 @@ def execute_batch_validation(
     batch.valid_rows = valid_records_count
     batch.status = BatchStatus.NEEDS_CORRECTION if blocking_error_count > 0 else BatchStatus.VALIDATED
 
-    # 4. Audit Log
+    # 4. Audit Log & Atomic Persistence
     audit = AuditEvent(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -489,7 +520,33 @@ def execute_batch_validation(
         )
     )
     db.add(audit)
-    db.commit()
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        # If conflict occurred on match candidate pair due to concurrent validation, retry without re-inserting match candidates.
+        # Why reusing computed findings is safe:
+        # 1. Validation findings (RULE-REQ, RULE-APAAR, RULE-DUP, RULE-INTAKE) are deterministic pure functions
+        #    of this batch's immutable student records and current approved intake configuration.
+        # 2. A collision on uq_match_candidates_pair means another concurrent validation run already created the exact
+        #    same match candidate pair in the database.
+        # 3. Therefore, re-running validation would compute identical findings. We safely re-apply the computed
+        #    findings, update batch status/metrics, and commit without recreating the conflicting candidate.
+        if is_match_candidate_pair_conflict(exc):
+            batch = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
+            if batch:
+                batch.error_rows = blocking_error_count
+                batch.warning_rows = warning_count
+                batch.valid_rows = valid_records_count
+                batch.status = BatchStatus.NEEDS_CORRECTION if blocking_error_count > 0 else BatchStatus.VALIDATED
+                if findings:
+                    db.add_all(findings)
+                db.add(audit)
+                db.commit()
+        else:
+            # Re-raise any unrelated integrity error (e.g., FK violations, NULL constraints)
+            raise
 
     val_summary = ValidationSummary(
         total_records=len(records),

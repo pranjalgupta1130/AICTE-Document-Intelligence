@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, String, Integer, DateTime, Enum, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from backend.app.db.session import Base
@@ -8,6 +8,9 @@ from backend.app.models.enums import BatchStatus
 
 class ImportBatch(Base):
     __tablename__ = "import_batches"
+    __table_args__ = (
+        UniqueConstraint("institution_id", "academic_year", "version", name="uq_batch_institution_ay_version"),
+    )
 
     id = Column(String(64), primary_key=True, default=lambda: f"BATCH-{uuid.uuid4().hex[:12]}")
     institution_id = Column(String(64), ForeignKey("institutions.id", ondelete="CASCADE"), nullable=False, index=True)
