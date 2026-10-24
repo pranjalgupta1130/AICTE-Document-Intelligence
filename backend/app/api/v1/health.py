@@ -23,6 +23,6 @@ def health_check(db: Session = Depends(get_db)):
         status="healthy" if db_status == "connected" else "degraded",
         service=settings.PROJECT_NAME,
         version=settings.VERSION,
-        environment="development",
+        environment=settings.ENVIRONMENT,
         database=db_status
     )

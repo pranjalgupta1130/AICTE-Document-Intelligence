@@ -20,6 +20,66 @@ from backend.app.models.verification import VerificationAttempt
 
 router = APIRouter(prefix="/verification", tags=["Verification"])
 
+def _resolve_student_record(
+    db: Session,
+    student_ref: str,
+    current_user: User
+) -> StudentRecord:
+    """
+    Safely resolves a StudentRecord for the authenticated caller.
+    - If caller is privileged (AICTE_ADMIN, DEMO_ADMIN, EXTERNAL_VERIFIER), searches globally.
+    - If caller is institution-bound:
+      1. If queried by internal student primary key (id), checks global record and enforces
+         institution scope (returning 403 if IDOR attempt across institutions).
+      2. If queried by domain identifier (apaar_id or institution_student_id), filters strictly
+         by current_user.institution_id so cross-institution duplicates resolve safely to the
+         caller's own record without collision or information leakage.
+    """
+    is_privileged = current_user.role in (
+        UserRole.AICTE_ADMIN,
+        UserRole.DEMO_ADMIN,
+        UserRole.EXTERNAL_VERIFIER
+    )
+
+    if is_privileged:
+        record = db.query(StudentRecord).filter(
+            (StudentRecord.id == student_ref) |
+            (StudentRecord.institution_student_id == student_ref) |
+            (StudentRecord.apaar_id == student_ref)
+        ).order_by(StudentRecord.id.asc()).first()
+    else:
+        # Check institution caller bound institution
+        inst_id = current_user.institution_id
+        if not inst_id:
+            raise NotFoundError(f"Student record '{student_ref}' not found.")
+
+        # First, check if student_ref is a record in caller's institution (by id, institution_student_id, or apaar_id)
+        record = db.query(StudentRecord).filter(
+            StudentRecord.institution_id == inst_id,
+            (
+                (StudentRecord.id == student_ref) |
+                (StudentRecord.institution_student_id == student_ref) |
+                (StudentRecord.apaar_id == student_ref)
+            )
+        ).order_by(StudentRecord.id.asc()).first()
+
+        # If not found in caller's institution, check if student_ref is a direct primary key (id)
+        # of another institution's record. If so, enforce institution scope to return 403.
+        # Note: We do NOT do this for apaar_id/institution_student_id to prevent leaking identifier existence.
+        if not record:
+            cross_record = db.query(StudentRecord).filter(StudentRecord.id == student_ref).first()
+            if cross_record:
+                enforce_institution_scope(current_user, cross_record.institution_id)
+
+    if not record:
+        raise NotFoundError(f"Student record '{student_ref}' not found.")
+
+    if not is_privileged:
+        enforce_institution_scope(current_user, record.institution_id)
+
+    return record
+
+
 @router.get("/{student_ref}", response_model=VerificationResult, summary="Privacy-restricted single-record APAAR verification lookup")
 def verify_student_record(
     student_ref: str,
@@ -29,23 +89,11 @@ def verify_student_record(
 ):
     """
     Perform a purpose-restricted, privacy-preserving verification check for a student.
-    - Can look up by student_id or apaar_id.
+    - Can look up by student_id, institution_student_id, or apaar_id.
     - Masks unauthorized data and clearly marks mock results as simulated.
     - Creates an immutable AuditEvent on every lookup.
     """
-    # Look up student record by id, institution_student_id, or apaar_id
-    record = db.query(StudentRecord).filter(
-        (StudentRecord.id == student_ref) |
-        (StudentRecord.institution_student_id == student_ref) |
-        (StudentRecord.apaar_id == student_ref)
-    ).first()
-
-    if not record:
-        raise NotFoundError(f"Student record '{student_ref}' not found.")
-
-    # Enforce institution isolation unless AICTE/DEMO admin or external verifier
-    if current_user.role not in (UserRole.AICTE_ADMIN, UserRole.DEMO_ADMIN, UserRole.EXTERNAL_VERIFIER):
-        enforce_institution_scope(current_user, record.institution_id)
+    record = _resolve_student_record(db, student_ref, current_user)
 
     # Perform inquiry via adapter
     adapter = get_apaar_adapter()
@@ -97,17 +145,7 @@ def get_student_certificate_preview(
     for degree-awarding bodies per Brief Section 2 (R16) and Section 10.
     Clearly marked as synthetic prototype display.
     """
-    record = db.query(StudentRecord).filter(
-        (StudentRecord.id == student_ref) |
-        (StudentRecord.institution_student_id == student_ref) |
-        (StudentRecord.apaar_id == student_ref)
-    ).first()
-
-    if not record:
-        raise NotFoundError(f"Student record '{student_ref}' not found.")
-
-    if current_user.role not in (UserRole.AICTE_ADMIN, UserRole.DEMO_ADMIN, UserRole.EXTERNAL_VERIFIER):
-        enforce_institution_scope(current_user, record.institution_id)
+    record = _resolve_student_record(db, student_ref, current_user)
 
     from backend.app.models.institution import Institution, Programme
     inst = db.query(Institution).filter(Institution.id == record.institution_id).first()

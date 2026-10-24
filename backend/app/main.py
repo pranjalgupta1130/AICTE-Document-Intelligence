@@ -12,6 +12,8 @@ from backend.app.db.session import init_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate critical configuration before serving requests
+    settings.validate_security_configuration()
     # Ensure database schema is initialized on startup
     init_db()
     yield

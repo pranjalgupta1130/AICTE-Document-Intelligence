@@ -185,6 +185,196 @@ def test_verification_api_endpoint_and_audit(client: TestClient, apex_admin_toke
         db.close()
 
 
+def test_verification_cross_institution_duplicate_apaar_scoping(client: TestClient, apex_admin_token, bharat_admin_token, aicte_token):
+    """
+    P1-01 Verification Scoping Remediation Test:
+    - Verifies that when two institutions have students with the identical APAAR ID,
+      an institution user (Apex or Bharat) looking up by APAAR ID correctly resolves
+      their OWN institution's student record rather than colliding or returning 403.
+    - Verifies unauthorized cross-institution primary key lookup returns 403 without data disclosure.
+    - Verifies non-existent APAAR lookup returns 404 without disclosing cross-institution presence.
+    - Verifies AICTE administrator and External Verifier can resolve students globally.
+    - Verifies certificate preview endpoint maintains the identical scoped behavior.
+    """
+    from backend.app.models.user import User
+    from backend.app.models.enums import UserRole
+    from backend.app.core.security import hash_password
+
+    db = SessionLocal()
+    # 123456789019 is a valid Verhoeff 12-digit number (d(1)=2, etc.)
+    # Let's use 888877776666 which has checksum 888877776666 or compute valid
+    shared_apaar = "888877776666"
+    batch_apex_id = f"BATCH-P1-APEX-{uuid.uuid4().hex[:6]}"
+    batch_bharat_id = f"BATCH-P1-BHARAT-{uuid.uuid4().hex[:6]}"
+    stu_apex_id = f"stu-apex-{uuid.uuid4().hex[:8]}"
+    stu_bharat_id = f"stu-bharat-{uuid.uuid4().hex[:8]}"
+    verifier_email = f"verifier_{uuid.uuid4().hex[:6]}@evaluator.gov.in"
+    verifier_user_id = f"usr-verif-{uuid.uuid4().hex[:6]}"
+
+    v_apex = int(uuid.uuid4().int % 900000 + 1000)
+    v_bharat = int(uuid.uuid4().int % 900000 + 1000)
+
+    try:
+        # Create batches for INST-001 (Apex) and INST-002 (Bharat)
+        b_apex = ImportBatch(
+            id=batch_apex_id,
+            institution_id="INST-001",
+            uploader_user_id="usr-apex-adm-01",
+            source_filename="apex_p1.csv",
+            academic_year="2026-2027",
+            version=v_apex,
+            status=BatchStatus.VALIDATED,
+        )
+        b_bharat = ImportBatch(
+            id=batch_bharat_id,
+            institution_id="INST-002",
+            uploader_user_id="usr-bharat-adm-01",
+            source_filename="bharat_p1.csv",
+            academic_year="2026-2027",
+            version=v_bharat,
+            status=BatchStatus.VALIDATED,
+        )
+        db.add_all([b_apex, b_bharat])
+
+        # Create two student records with the EXACT SAME APAAR ID in different institutions
+        stu_apex = StudentRecord(
+            id=stu_apex_id,
+            batch_id=batch_apex_id,
+            institution_id="INST-001",
+            programme_id="PROG-001-CSE",
+            academic_year="2026-2027",
+            institution_student_id="APEX-STU-P1",
+            student_name="Apex Student",
+            apaar_id=shared_apaar,
+            enrolment_status=EnrolmentStatus.ENROLLED,
+            seat_type=SeatType.REGULAR,
+        )
+        stu_bharat = StudentRecord(
+            id=stu_bharat_id,
+            batch_id=batch_bharat_id,
+            institution_id="INST-002",
+            programme_id="PROG-002-CSE",
+            academic_year="2026-2027",
+            institution_student_id="BHARAT-STU-P1",
+            student_name="Bharat Student",
+            apaar_id=shared_apaar,
+            enrolment_status=EnrolmentStatus.ENROLLED,
+            seat_type=SeatType.REGULAR,
+        )
+        db.add_all([stu_apex, stu_bharat])
+
+        # Create external verifier user
+        verifier_user = User(
+            id=verifier_user_id,
+            email=verifier_email,
+            hashed_password=hash_password("DemoPassword@2026"),
+            full_name="External Evaluator P1",
+            role=UserRole.EXTERNAL_VERIFIER,
+            institution_id=None,
+            is_active=True
+        )
+        db.add(verifier_user)
+        db.commit()
+
+        verifier_token = get_auth_token(client, verifier_email)
+
+        # 1. Own-institution lookup by APAAR ID:
+        # Apex admin queries the duplicate APAAR ID -> Must resolve Apex record (200)
+        res_apex = client.get(
+            f"/api/v1/verification/{shared_apaar}",
+            headers={"Authorization": f"Bearer {apex_admin_token}"}
+        )
+        assert res_apex.status_code == 200, res_apex.text
+        # Verify AuditEvent points to Apex record, not Bharat record
+        audit_apex = db.query(AuditEvent).filter(
+            AuditEvent.object_id == stu_apex_id,
+            AuditEvent.action == AuditAction.VERIFICATION_LOOKUP
+        ).order_by(AuditEvent.timestamp.desc()).first()
+        assert audit_apex is not None
+        assert audit_apex.institution_id == "INST-001"
+
+        # Bharat admin queries the EXACT SAME duplicate APAAR ID -> Must resolve Bharat record (200)
+        res_bharat = client.get(
+            f"/api/v1/verification/{shared_apaar}",
+            headers={"Authorization": f"Bearer {bharat_admin_token}"}
+        )
+        assert res_bharat.status_code == 200, res_bharat.text
+        # Verify AuditEvent points to Bharat record
+        audit_bharat = db.query(AuditEvent).filter(
+            AuditEvent.object_id == stu_bharat_id,
+            AuditEvent.action == AuditAction.VERIFICATION_LOOKUP
+        ).order_by(AuditEvent.timestamp.desc()).first()
+        assert audit_bharat is not None
+        assert audit_bharat.institution_id == "INST-002"
+
+        # 2. Certificate preview scoping with duplicate APAAR ID:
+        cert_apex = client.get(
+            f"/api/v1/verification/{shared_apaar}/certificate",
+            headers={"Authorization": f"Bearer {apex_admin_token}"}
+        )
+        assert cert_apex.status_code == 200
+        assert cert_apex.json()["student_name"] == "Apex Student"
+
+        cert_bharat = client.get(
+            f"/api/v1/verification/{shared_apaar}/certificate",
+            headers={"Authorization": f"Bearer {bharat_admin_token}"}
+        )
+        assert cert_bharat.status_code == 200
+        assert cert_bharat.json()["student_name"] == "Bharat Student"
+
+        # 3. Cross-institution unauthorized lookup by internal ID:
+        # Apex admin attempting to query Bharat student's primary key -> Must return 403
+        res_cross_pk = client.get(
+            f"/api/v1/verification/{stu_bharat_id}",
+            headers={"Authorization": f"Bearer {apex_admin_token}"}
+        )
+        assert res_cross_pk.status_code == 403
+
+        # Bharat admin attempting to query Apex student's primary key -> Must return 403
+        res_cross_pk2 = client.get(
+            f"/api/v1/verification/{stu_apex_id}",
+            headers={"Authorization": f"Bearer {bharat_admin_token}"}
+        )
+        assert res_cross_pk2.status_code == 403
+
+        # Cross-institution roll number lookup does NOT disclose existence of student in other inst -> 404
+        res_cross_roll = client.get(
+            "/api/v1/verification/BHARAT-STU-P1",
+            headers={"Authorization": f"Bearer {apex_admin_token}"}
+        )
+        assert res_cross_roll.status_code == 404
+
+        # 4. Privileged access: AICTE Admin can resolve globally
+        res_aicte = client.get(
+            f"/api/v1/verification/{stu_bharat_id}",
+            headers={"Authorization": f"Bearer {aicte_token}"}
+        )
+        assert res_aicte.status_code == 200
+
+        # Privileged access: External Verifier can resolve globally
+        res_verifier = client.get(
+            f"/api/v1/verification/{stu_apex_id}",
+            headers={"Authorization": f"Bearer {verifier_token}"}
+        )
+        assert res_verifier.status_code == 200
+
+        # 5. Missing / non-existent identifier returns 404
+        res_missing = client.get(
+            "/api/v1/verification/NON_EXISTENT_ID_99999",
+            headers={"Authorization": f"Bearer {apex_admin_token}"}
+        )
+        assert res_missing.status_code == 404
+
+    finally:
+        db.rollback()
+        db.query(AuditEvent).filter(AuditEvent.object_id.in_([stu_apex_id, stu_bharat_id])).delete(synchronize_session=False)
+        db.query(StudentRecord).filter(StudentRecord.id.in_([stu_apex_id, stu_bharat_id])).delete(synchronize_session=False)
+        db.query(ImportBatch).filter(ImportBatch.id.in_([batch_apex_id, batch_bharat_id])).delete(synchronize_session=False)
+        db.query(User).filter(User.id == verifier_user_id).delete(synchronize_session=False)
+        db.commit()
+        db.close()
+
+
 # ==============================================================================
 # 2. Cross-Institution Duplicate Review Tests
 # ==============================================================================

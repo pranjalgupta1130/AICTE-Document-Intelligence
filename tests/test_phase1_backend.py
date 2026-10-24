@@ -446,3 +446,65 @@ def test_audit_07_external_verifier_permission_denial(client):
         assert "external verifier" in data["error"]["message"].lower()
     finally:
         db.close()
+
+
+def test_audit_p2_01_secret_key_configuration_validation(client):
+    """
+    P2-01 Audit Remediation Test:
+    - Production configuration rejects a missing / empty secret.
+    - Production configuration rejects the insecure development default.
+    - Production configuration rejects secrets shorter than 32 characters.
+    - Production configuration accepts a sufficiently long secret (>= 32 chars).
+    - Development and test configurations continue to behave as intended with dev secret.
+    - Secrets are never leaked into exception messages.
+    - Existing login and JWT issuance/verification remain intact.
+    """
+    from backend.app.core.config import Settings, INSECURE_DEFAULT_SECRET_KEY, MINIMUM_SECRET_KEY_LENGTH
+
+    # 1. Production with missing / whitespace secret -> Rejects with RuntimeError
+    s_missing = Settings(ENVIRONMENT="production", SECRET_KEY="")
+    with pytest.raises(RuntimeError) as exc_info:
+        s_missing.validate_security_configuration()
+    assert "SECRET_KEY is not configured" in str(exc_info.value)
+    assert INSECURE_DEFAULT_SECRET_KEY not in str(exc_info.value)
+
+    # 2. Production with insecure default secret -> Rejects with RuntimeError
+    s_default = Settings(ENVIRONMENT="production", SECRET_KEY=INSECURE_DEFAULT_SECRET_KEY)
+    with pytest.raises(RuntimeError) as exc_info:
+        s_default.validate_security_configuration()
+    assert "insecure development default" in str(exc_info.value)
+    assert INSECURE_DEFAULT_SECRET_KEY not in str(exc_info.value)
+
+    # 3. Production with secret shorter than 32 characters -> Rejects with RuntimeError
+    short_secret = "too-short-key-12345"
+    s_short = Settings(ENVIRONMENT="production", SECRET_KEY=short_secret)
+    with pytest.raises(RuntimeError) as exc_info:
+        s_short.validate_security_configuration()
+    assert f"at least {MINIMUM_SECRET_KEY_LENGTH} characters long" in str(exc_info.value)
+    # Ensure raw secret is not leaked in exception string
+    assert short_secret not in str(exc_info.value)
+
+    # 4. Production with strong secret (>= 32 characters) -> Validates cleanly
+    strong_secret = "c7d9e1f2a3b4c5d6e7f8a9b0c1d2e3f4g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v0"
+    s_valid = Settings(ENVIRONMENT="production", SECRET_KEY=strong_secret)
+    s_valid.validate_security_configuration()  # Must not raise
+
+    # 5. Development and test environment -> Accepts dev secret without error
+    s_dev = Settings(ENVIRONMENT="development", SECRET_KEY=INSECURE_DEFAULT_SECRET_KEY)
+    s_dev.validate_security_configuration()  # Must not raise
+
+    s_test = Settings(ENVIRONMENT="test", SECRET_KEY=INSECURE_DEFAULT_SECRET_KEY)
+    s_test.validate_security_configuration()  # Must not raise
+
+    # 6. Verify existing login and JWT validation behavior remains intact
+    response = client.post("/api/v1/auth/login", json={
+        "email": "apex_admin@apex.edu.in",
+        "password": "DemoPassword@2026"
+    })
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    assert token is not None
+
+    me_res = client.get("/api/v1/me", headers={"Authorization": f"Bearer {token}"})
+    assert me_res.status_code == 200
+    assert me_res.json()["email"] == "apex_admin@apex.edu.in"

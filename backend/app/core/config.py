@@ -2,16 +2,20 @@ import os
 from typing import List
 from pydantic import BaseModel
 
+INSECURE_DEFAULT_SECRET_KEY = "sih26263-apaar-insecure-dev-secret-replace-in-production-7f8a9b"
+MINIMUM_SECRET_KEY_LENGTH = 32
+
 class Settings(BaseModel):
     PROJECT_NAME: str = "SIH 26263 APAAR Student Data Platform"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").lower()
 
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./apaar_platform.db")
 
     # Security
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "sih26263-apaar-insecure-dev-secret-replace-in-production-7f8a9b")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", INSECURE_DEFAULT_SECRET_KEY)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))  # 8 hours
 
@@ -39,4 +43,31 @@ class Settings(BaseModel):
     APAAR_MANDATORY: bool = os.getenv("APAAR_MANDATORY", "false").lower() in ("true", "1", "yes")
     ENFORCE_VERHOEFF_CHECKSUM: bool = os.getenv("ENFORCE_VERHOEFF_CHECKSUM", "true").lower() in ("true", "1", "yes")
 
+    def validate_security_configuration(self) -> None:
+        """
+        Validate critical security parameters prior to accepting traffic.
+        In production:
+        - SECRET_KEY must be provided explicitly and cannot be empty or None.
+        - SECRET_KEY cannot match the insecure development default.
+        - SECRET_KEY must be at least MINIMUM_SECRET_KEY_LENGTH (32) characters long.
+        Raises RuntimeError with sanitized error message (never disclosing secrets).
+        """
+        if self.ENVIRONMENT == "production":
+            if not self.SECRET_KEY or self.SECRET_KEY.strip() == "":
+                raise RuntimeError(
+                    "CRITICAL SECURITY CONFIGURATION ERROR: SECRET_KEY is not configured. "
+                    "A secure secret key is required in production."
+                )
+            if self.SECRET_KEY == INSECURE_DEFAULT_SECRET_KEY:
+                raise RuntimeError(
+                    "CRITICAL SECURITY CONFIGURATION ERROR: SECRET_KEY is using the insecure "
+                    "development default. A distinct, cryptographically strong secret key is required in production."
+                )
+            if len(self.SECRET_KEY) < MINIMUM_SECRET_KEY_LENGTH:
+                raise RuntimeError(
+                    f"CRITICAL SECURITY CONFIGURATION ERROR: SECRET_KEY does not meet the minimum "
+                    f"strength requirement (must be at least {MINIMUM_SECRET_KEY_LENGTH} characters long)."
+                )
+
 settings = Settings()
+settings.validate_security_configuration()
