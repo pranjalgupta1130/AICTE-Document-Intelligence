@@ -171,3 +171,107 @@ def get_batch_quality_score(
 
     enforce_institution_scope(current_user, batch.institution_id)
     return calculate_batch_quality_score(db=db, batch=batch)
+
+# ---------------------------------------------------------------------------
+# Member 3 Extensions: Anomaly Analytics, Explainable Fuzzy Matching & Deltas
+# ---------------------------------------------------------------------------
+@router.get("/{batch_id}/anomalies", summary="Get batch anomaly analytics and statistical hygiene report")
+def get_batch_anomalies(
+    batch_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve deterministic batch anomaly analytics (missing field spikes, malformed identifier rates,
+    duplicate concentration, seat-type distribution anomalies, and quota breaches).
+    """
+    from backend.app.services.anomaly_service import analyze_batch_anomalies
+
+    batch = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
+    if not batch:
+        raise NotFoundError(f"ImportBatch '{batch_id}' was not found.")
+
+    enforce_institution_scope(current_user, batch.institution_id)
+    return analyze_batch_anomalies(db=db, batch=batch)
+
+@router.get("/{batch_id}/fuzzy-duplicates", summary="Detect explainable fuzzy duplicate candidates for batch")
+def get_batch_fuzzy_duplicates(
+    batch_id: str,
+    threshold: float = Query(0.75, ge=0.50, le=1.0, description="Similarity confidence threshold"),
+    include_cross_institution: bool = Query(True, description="Include active candidates across other institutions"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Evaluate student records in this batch for fuzzy duplicate candidates based on multi-field similarity.
+    Returns explainable match attributions without altering student records.
+    """
+    from backend.app.services.duplicate_fuzzy_service import find_fuzzy_duplicates_for_batch
+
+    batch = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
+    if not batch:
+        raise NotFoundError(f"ImportBatch '{batch_id}' was not found.")
+
+    enforce_institution_scope(current_user, batch.institution_id)
+    return find_fuzzy_duplicates_for_batch(
+        db=db,
+        batch_id=batch_id,
+        threshold=threshold,
+        include_cross_institution=include_cross_institution,
+        persist_to_match_candidates=False,
+        current_user=current_user
+    )
+
+@router.post("/{batch_id}/fuzzy-duplicates/stage", summary="Detect and stage fuzzy duplicate candidates into MatchCandidate review queue")
+def stage_batch_fuzzy_duplicates(
+    batch_id: str,
+    threshold: float = Query(0.75, ge=0.50, le=1.0, description="Similarity confidence threshold"),
+    include_cross_institution: bool = Query(True, description="Include active candidates across other institutions"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Detect fuzzy duplicate candidates and stage them into the official MatchCandidate review table
+    for AICTE Administrator resolution under the Exception Queue.
+    """
+    from backend.app.services.duplicate_fuzzy_service import find_fuzzy_duplicates_for_batch
+
+    batch = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
+    if not batch:
+        raise NotFoundError(f"ImportBatch '{batch_id}' was not found.")
+
+    enforce_institution_scope(current_user, batch.institution_id)
+    return find_fuzzy_duplicates_for_batch(
+        db=db,
+        batch_id=batch_id,
+        threshold=threshold,
+        include_cross_institution=include_cross_institution,
+        persist_to_match_candidates=True,
+        current_user=current_user
+    )
+
+@router.get("/{batch_id}/compare/{other_batch_id}", summary="Compare data quality scores between two batch versions")
+def compare_batch_quality(
+    batch_id: str,
+    other_batch_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Compare quality scores between two batches (e.g. initial submission vs revalidated batch after clerical fixes).
+    Enforces institution scoping on both batches.
+    """
+    from backend.app.services.quality_service import calculate_quality_score_improvement
+
+    batch_a = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
+    if not batch_a:
+        raise NotFoundError(f"ImportBatch '{batch_id}' was not found.")
+
+    batch_b = db.query(ImportBatch).filter(ImportBatch.id == other_batch_id).first()
+    if not batch_b:
+        raise NotFoundError(f"ImportBatch '{other_batch_id}' was not found.")
+
+    enforce_institution_scope(current_user, batch_a.institution_id)
+    enforce_institution_scope(current_user, batch_b.institution_id)
+
+    return calculate_quality_score_improvement(db=db, batch_before=batch_a, batch_after=batch_b)

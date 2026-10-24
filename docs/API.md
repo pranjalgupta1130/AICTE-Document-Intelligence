@@ -673,3 +673,78 @@ The backend and data platform has successfully completed all six implementation 
 4. **Phase 4**: Concurrency Hardening, Batch Submission Lifecycle, Review Workflows, Operational & Central Dashboards.
 5. **Phase 5**: Replaceable APAAR Adapter & Mock Provider, 4D Data Quality Engine, Streaming CSV Export.
 6. **Phase 6**: System Hardening, Certificate Preview, Full Workflow Integration, Regression Testing.
+
+---
+
+## 10. Member 3: Data Quality Intelligence & Anomaly APIs
+
+### GET `/api/v1/batches/{batch_id}/anomalies`
+Retrieve batch anomaly analytics evaluating 6 statistical indicators (missing mandatory fields, invalid syntax/checksum rates, duplicate concentrations, seat distribution, intake capacity, cross-institution dual enrolments).
+
+**Permissions:** `INSTITUTION_ADMIN`, `INSTITUTION_OPERATOR` (scoped to own institution), `AICTE_ADMIN`, `DEMO_ADMIN`.
+
+**Response (`200 OK`):**
+```json
+{
+  "batch_id": "BATCH-001",
+  "institution_id": "INST-001",
+  "academic_year": "2026-2027",
+  "total_records": 100,
+  "total_findings": 14,
+  "anomalies_detected": 1,
+  "anomaly_level": "WARNING",
+  "anomalies": [
+    {
+      "anomaly_type": "MISSING_FIELD_SPIKE",
+      "severity": "WARNING",
+      "metric_name": "missing_mandatory_fields_pct",
+      "observed_value": 14.0,
+      "threshold_value": 10.0,
+      "unit": "percentage",
+      "evidence": {
+        "affected_records": 14,
+        "total_records": 100,
+        "findings_count": 14
+      },
+      "message": "Elevated omission rate: 14.0% of student records have missing required fields.",
+      "suggested_action": "Review missing student names or identifier fields before submitting batch."
+    }
+  ],
+  "summary": "ELEVATED ANOMALIES DETECTED: 1 pattern warnings flagged. Institutional review advised."
+}
+```
+
+---
+
+### GET `/api/v1/batches/{batch_id}/fuzzy-duplicates`
+Query explainable fuzzy duplicate candidate pairs evaluated across student name, programme, academic year, and seat type.
+
+**Query Parameters:**
+- `threshold`: Float between `0.50` and `1.0` (default `0.75`).
+- `include_cross_institution`: Boolean (default `true`).
+
+**Permissions:** Scoped to owning institution or AICTE Admin.
+
+---
+
+### POST `/api/v1/batches/{batch_id}/fuzzy-duplicates/stage`
+Stage detected fuzzy duplicate candidate pairs into the official `MatchCandidate` review queue for human exception handling.
+
+---
+
+### GET `/api/v1/batches/{batch_id}/compare/{other_batch_id}`
+Compare dataset quality scores between two batch versions (e.g., initial upload vs revalidated batch after clerical corrections).
+
+---
+
+### GET `/api/v1/institutions/{institution_id}/quality-summary`
+Retrieve record-weighted data quality scores aggregated across all historical batches of an institution.
+
+
+---
+
+### GET /api/v1/institutions/{institution_id}/longitudinal-trends
+Retrieve longitudinal data quality and enrolment trends across historical batches for an institution (Brief Section 11 USP 8 & Section 12 P2).
+- Returns timeline datapoints for each batch (scores, dimensional breakdowns, and deltas from previous submissions).
+- Tracks overall institution trajectory (\IMPROVING\, \DEGRADING\, or \STABLE\).
+- Enforces strict institution isolation.

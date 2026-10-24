@@ -1,9 +1,9 @@
 from typing import Optional
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from backend.app.core.errors import PermissionDeniedError
-from backend.app.core.permissions import get_current_user
+from backend.app.core.errors import NotFoundError, PermissionDeniedError
+from backend.app.core.permissions import get_current_user, enforce_institution_scope
 from backend.app.db.session import get_db
 from backend.app.models.enums import UserRole
 from backend.app.models.institution import Institution
@@ -45,3 +45,52 @@ def list_institutions(
         for inst in institutions
     ]
     return PaginatedList[InstitutionRead](items=items, total=len(items))
+
+@router.get("/{institution_id}/quality-summary", summary="Get aggregated institution data quality score across batches")
+def get_institution_quality_summary(
+    institution_id: str,
+    academic_year: Optional[str] = Query(None, description="Filter by academic year"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve record-weighted data quality score aggregated across all batches of an institution.
+    Enforces strict institution isolation.
+    """
+    enforce_institution_scope(current_user, institution_id)
+
+    inst = db.query(Institution).filter(Institution.id == institution_id).first()
+    if not inst:
+        raise NotFoundError(f"Institution '{institution_id}' was not found.")
+
+    from backend.app.services.quality_service import calculate_institution_quality_aggregation
+    return calculate_institution_quality_aggregation(
+        db=db,
+        institution_id=institution_id,
+        academic_year=academic_year
+    )
+
+@router.get("/{institution_id}/longitudinal-trends", summary="Get longitudinal data quality and enrolment trends across historical batches")
+def get_institution_longitudinal_trends(
+    institution_id: str,
+    academic_year: Optional[str] = Query(None, description="Filter by academic year"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve longitudinal data quality and enrolment trends across historical batches for an institution.
+    Provides batch timeline datapoints, score deltas, and net improvement tracking.
+    Enforces strict institution isolation.
+    """
+    enforce_institution_scope(current_user, institution_id)
+
+    inst = db.query(Institution).filter(Institution.id == institution_id).first()
+    if not inst:
+        raise NotFoundError(f"Institution '{institution_id}' was not found.")
+
+    from backend.app.services.quality_service import calculate_institution_longitudinal_trends
+    return calculate_institution_longitudinal_trends(
+        db=db,
+        institution_id=institution_id,
+        academic_year=academic_year
+    )

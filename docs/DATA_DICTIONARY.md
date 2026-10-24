@@ -245,3 +245,57 @@ class AuditAction(str, Enum):
 | `apex_operator@apex.edu.in` | `DemoPassword@2026` | `INSTITUTION_OPERATOR` | `INST-001` | Apex Ingestion Operator |
 | `bharat_admin@bharat.edu.in` | `DemoPassword@2026` | `INSTITUTION_ADMIN` | `INST-002` | Bharat Institution Admin |
 | `demo_admin@apaar.gov.in` | `DemoPassword@2026` | `DEMO_ADMIN` | `null` | Hackathon Demonstration Lead |
+
+---
+
+## 4. Member 3: Data Quality Intelligence Schemas
+
+### 4.1 `FuzzyCandidateResult`
+Explainable fuzzy candidate entity flagged by multi-field similarity engine.
+
+| Field | Type | Description |
+|---|---|---|
+| `candidate_id` | String | Unique candidate match identifier (e.g., `fuz-9e2c4d1a5b8e`) |
+| `record_a_id` | String (FK) | First candidate student record |
+| `record_b_id` | String (FK) | Second candidate student record |
+| `institution_a_id` | String (FK) | Institution of record A |
+| `institution_b_id` | String (FK) | Institution of record B |
+| `is_cross_institution`| Boolean | True if pair spans different institutions |
+| `overall_similarity`| Float | Composite similarity confidence in [0.0, 1.0] |
+| `field_comparisons` | List[FieldComparisonDetail] | Attributed field scores, weights, contributions, and explanations |
+| `explanation` | String | Plain-language human-readable match rationale |
+| `suggested_action` | String | Operational next step for reviewer |
+
+---
+
+### 4.2 `BatchAnomalyReport` & `AnomalyFinding`
+Statistical and pattern anomaly report for import batches.
+
+| Field | Type | Description |
+|---|---|---|
+| `batch_id` | String (FK) | Evaluated batch identifier |
+| `institution_id` | String (FK) | Associated institution |
+| `academic_year` | String | Academic year of batch |
+| `anomaly_level` | String | Overall hygiene assessment (`NORMAL`, `ELEVATED`, `CRITICAL`) |
+| `anomalies` | List[AnomalyFinding] | Structured anomaly indicators |
+
+---
+
+### 4.3 `InstitutionQualitySummary` & `QualityScoreDelta`
+Aggregated institutional quality summaries and version delta tracking.
+
+
+---
+
+### 4.4 LongitudinalTrendReport & LongitudinalTrendPoint
+Timeline tracking for institutional quality and enrolment changes.
+
+| Field | Type | Description |
+|---|---|---|
+| institution_id | String (FK) | Evaluated institution |
+| cademic_year_filter | Optional[String] | Applied year filter |
+| 	otal_batches | Integer | Total evaluated submissions |
+| overall_trend | String | Trajectory: \IMPROVING\, \DEGRADING\, \STABLE\, or \INSUFFICIENT_DATA\ |
+| 
+et_quality_change | Float | Net delta between earliest and latest batch scores |
+| datapoints | List[LongitudinalTrendPoint] | Detailed chronological batch quality metrics |
