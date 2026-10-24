@@ -685,3 +685,122 @@ def test_concurrent_validation_retry_preserves_findings_and_status(client):
     finally:
         db.rollback()
         db.close()
+
+
+def test_symmetric_match_candidate_index_compilation_and_dialect_support():
+    """
+    P2-02 Audit Remediation Test:
+    - Verifies that MatchCandidate's symmetric uniqueness index compiles cleanly
+      for both SQLite and PostgreSQL dialects.
+    - Verifies init_db() executes safely on the active database without error.
+    - Verifies that inserting symmetric duplicate candidates (A, B) and (B, A) is strictly
+      prevented by the database-level unique constraint.
+    """
+    from sqlalchemy.dialects import sqlite, postgresql
+    from sqlalchemy.schema import CreateIndex
+    from backend.app.db.session import init_db
+
+    # 1. DDL compilation check for SQLite and PostgreSQL
+    index_obj = None
+    for idx in MatchCandidate.__table__.indexes:
+        if idx.name == "uq_match_candidates_pair":
+            index_obj = idx
+            break
+
+    assert index_obj is not None, "uq_match_candidates_pair index not found on MatchCandidate"
+
+    ddl_sqlite = str(CreateIndex(index_obj).compile(dialect=sqlite.dialect()))
+    ddl_postgres = str(CreateIndex(index_obj).compile(dialect=postgresql.dialect()))
+
+    assert "CREATE UNIQUE INDEX uq_match_candidates_pair ON match_candidates" in ddl_sqlite
+    assert "CASE WHEN" in ddl_sqlite
+
+    assert "CREATE UNIQUE INDEX uq_match_candidates_pair ON match_candidates" in ddl_postgres
+    assert "CASE WHEN" in ddl_postgres
+
+    # 2. Database initialization idempotency
+    init_db()  # Must not raise
+
+    # 3. Functional enforcement of symmetric pair uniqueness
+    db = SessionLocal()
+    rec_a_id = f"stu-sym-a-{uuid.uuid4().hex[:6]}"
+    rec_b_id = f"stu-sym-b-{uuid.uuid4().hex[:6]}"
+    batch_id = f"BATCH-SYM-{uuid.uuid4().hex[:6]}"
+
+    try:
+        # Create minimal batch and records
+        batch = ImportBatch(
+            id=batch_id,
+            institution_id="INST-001",
+            uploader_user_id="usr-apex-adm-01",
+            source_filename="sym.csv",
+            academic_year="2026-2027",
+            version=int(uuid.uuid4().int % 900000 + 1000),
+            status=BatchStatus.DRAFT
+        )
+        db.add(batch)
+
+        stu_a = StudentRecord(
+            id=rec_a_id,
+            batch_id=batch_id,
+            institution_id="INST-001",
+            programme_id="PROG-001-CSE",
+            apaar_id="111122223333",
+            institution_student_id=f"SYMA-{uuid.uuid4().hex[:4]}",
+            student_name="Symmetric Student A",
+            academic_year="2026-2027"
+        )
+        stu_b = StudentRecord(
+            id=rec_b_id,
+            batch_id=batch_id,
+            institution_id="INST-001",
+            programme_id="PROG-001-CSE",
+            apaar_id="111122223333",
+            institution_student_id=f"SYMB-{uuid.uuid4().hex[:4]}",
+            student_name="Symmetric Student B",
+            academic_year="2026-2027"
+        )
+        db.add_all([stu_a, stu_b])
+        db.commit()
+
+        # Insert pair (A, B)
+        c1 = MatchCandidate(
+            id=f"mat-1-{uuid.uuid4().hex[:6]}",
+            record_a_id=rec_a_id,
+            record_b_id=rec_b_id,
+            institution_a_id="INST-001",
+            institution_b_id="INST-001",
+            matching_signal="APAAR_EXACT",
+            confidence=1.0,
+            status=MatchStatus.CANDIDATE
+        )
+        db.add(c1)
+        db.commit()
+
+        # Insert reversed pair (B, A) -> MUST trigger IntegrityError
+        c2 = MatchCandidate(
+            id=f"mat-2-{uuid.uuid4().hex[:6]}",
+            record_a_id=rec_b_id,
+            record_b_id=rec_a_id,
+            institution_a_id="INST-001",
+            institution_b_id="INST-001",
+            matching_signal="APAAR_EXACT",
+            confidence=1.0,
+            status=MatchStatus.CANDIDATE
+        )
+        db.add(c2)
+        with pytest.raises(IntegrityError):
+            db.commit()
+
+        db.rollback()
+
+    finally:
+        db.rollback()
+        db.query(MatchCandidate).filter(
+            ((MatchCandidate.record_a_id == rec_a_id) & (MatchCandidate.record_b_id == rec_b_id)) |
+            ((MatchCandidate.record_a_id == rec_b_id) & (MatchCandidate.record_b_id == rec_a_id))
+        ).delete(synchronize_session=False)
+        db.query(StudentRecord).filter(StudentRecord.id.in_([rec_a_id, rec_b_id])).delete(synchronize_session=False)
+        db.query(ImportBatch).filter(ImportBatch.id == batch_id).delete(synchronize_session=False)
+        db.commit()
+        db.close()
