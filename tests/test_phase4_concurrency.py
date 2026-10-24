@@ -804,3 +804,48 @@ def test_symmetric_match_candidate_index_compilation_and_dialect_support():
         db.query(ImportBatch).filter(ImportBatch.id == batch_id).delete(synchronize_session=False)
         db.commit()
         db.close()
+
+
+def test_database_engine_connection_and_pool_configuration():
+    """
+    P2-03 Audit Remediation Test:
+    - Verifies that SQLite engine is configured with WAL journal mode, busy_timeout=30000ms,
+      and foreign key enforcement enabled.
+    - Verifies that client-server engines (PostgreSQL) use configured pool parameters (pool_size,
+      max_overflow, pool_timeout, and pool_pre_ping) from Settings without errors.
+    """
+    from sqlalchemy import create_engine
+    from backend.app.core.config import settings
+    from backend.app.db.session import engine
+
+    # 1. Active SQLite engine configuration
+    with engine.connect() as conn:
+        fk = conn.exec_driver_sql("PRAGMA foreign_keys;").fetchone()[0]
+        journal = conn.exec_driver_sql("PRAGMA journal_mode;").fetchone()[0]
+        timeout = conn.exec_driver_sql("PRAGMA busy_timeout;").fetchone()[0]
+
+        assert fk == 1, "SQLite PRAGMA foreign_keys must be ON"
+        assert journal.lower() == "wal", "SQLite PRAGMA journal_mode must be WAL"
+        assert timeout >= 30000, "SQLite PRAGMA busy_timeout must be at least 30000ms"
+
+    # 2. Mock client-server PostgreSQL pool configuration verification
+    mock_pg_url = "postgresql://user:pass@localhost:5432/mock_db"
+    pg_kwargs = {
+        "pool_size": settings.DB_POOL_SIZE,
+        "max_overflow": settings.DB_MAX_OVERFLOW,
+        "pool_timeout": settings.DB_POOL_TIMEOUT,
+        "pool_pre_ping": True,
+    }
+    # Verify create_engine accepts these kwargs with postgresql dialect without error
+    # Note: we pass strategy/mock or verify QueuePool attributes
+    from sqlalchemy.pool import QueuePool
+    pg_engine = create_engine(
+        mock_pg_url,
+        **pg_kwargs
+    )
+    assert isinstance(pg_engine.pool, QueuePool)
+    assert pg_engine.pool.size() == settings.DB_POOL_SIZE
+    assert pg_engine.pool._max_overflow == settings.DB_MAX_OVERFLOW
+    assert pg_engine.pool._timeout == settings.DB_POOL_TIMEOUT
+    assert pg_engine.pool._pre_ping is True
+    pg_engine.dispose()

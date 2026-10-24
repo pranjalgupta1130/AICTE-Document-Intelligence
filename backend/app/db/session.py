@@ -5,22 +5,29 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 from backend.app.core.config import settings
 
-connect_args = {}
+engine_kwargs = {"echo": False}
 if settings.DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
+    engine_kwargs["connect_args"] = {"check_same_thread": False, "timeout": 30}
+else:
+    # Client-server databases (e.g. PostgreSQL, MySQL) benefit from connection pooling
+    engine_kwargs["pool_size"] = settings.DB_POOL_SIZE
+    engine_kwargs["max_overflow"] = settings.DB_MAX_OVERFLOW
+    engine_kwargs["pool_timeout"] = settings.DB_POOL_TIMEOUT
+    engine_kwargs["pool_pre_ping"] = True
 
 engine = create_engine(
     settings.DATABASE_URL,
-    connect_args=connect_args,
-    echo=False
+    **engine_kwargs
 )
 
-# Enforce foreign key constraints in SQLite
+# Enforce foreign key constraints, WAL journal mode, and busy timeout in SQLite
 if settings.DATABASE_URL.startswith("sqlite"):
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.execute("PRAGMA journal_mode=WAL")
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
