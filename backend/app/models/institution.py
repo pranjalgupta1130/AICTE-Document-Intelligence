@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from backend.app.db.session import Base
@@ -15,7 +15,7 @@ class Institution(Base):
     status = Column(String(32), default="ACTIVE", nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
-    users = relationship("User", back_populates="institution", cascade="all, delete-orphan")
+    users = relationship("User", back_populates="institution")
     programmes = relationship("Programme", back_populates="institution", cascade="all, delete-orphan")
     approved_intakes = relationship("ApprovedIntake", back_populates="institution", cascade="all, delete-orphan")
     student_records = relationship("StudentRecord", back_populates="institution")
@@ -36,6 +36,9 @@ class Programme(Base):
 
 class ApprovedIntake(Base):
     __tablename__ = "approved_intakes"
+    __table_args__ = (
+        UniqueConstraint("institution_id", "programme_id", "academic_year", name="uq_institution_prog_year_intake"),
+    )
 
     id = Column(String(64), primary_key=True)
     institution_id = Column(String(64), ForeignKey("institutions.id", ondelete="CASCADE"), nullable=False, index=True)

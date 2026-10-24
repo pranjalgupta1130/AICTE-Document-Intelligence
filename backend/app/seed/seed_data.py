@@ -261,6 +261,9 @@ def seed_database(reset: bool = False, db: Session = None) -> None:
                 db.add(user)
 
         db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         if close_db_at_end:
             db.close()

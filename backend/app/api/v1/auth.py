@@ -38,6 +38,19 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         raise AuthenticationError("Invalid email or password.")
 
     if not user.is_active:
+        audit = AuditEvent(
+            actor_user_id=user.id,
+            actor_email=user.email,
+            actor_role=user.role.value,
+            institution_id=user.institution_id,
+            action=AuditAction.LOGIN,
+            object_type="USER",
+            object_id=user.id,
+            outcome="BLOCKED",
+            details="Login attempted for deactivated account"
+        )
+        db.add(audit)
+        db.commit()
         raise AuthenticationError("User account has been deactivated.")
 
     # Record successful login audit

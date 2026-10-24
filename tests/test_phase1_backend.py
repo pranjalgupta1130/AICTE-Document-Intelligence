@@ -237,3 +237,212 @@ def test_validation_error_shape(client):
     assert "error" in data
     assert data["error"]["code"] == "VALIDATION_ERROR"
     assert "request_id" in data["error"]
+
+# --------------------------------------------------------------------------
+# 7. Audit Findings Regression Tests (AUDIT-01 to AUDIT-07)
+# --------------------------------------------------------------------------
+def test_audit_01_direct_get_me_route_alias(client):
+    """AUDIT-01: Verify GET /api/v1/me route alias matches Brief Section 9."""
+    token = get_auth_token(client, "apex_admin@apex.edu.in")
+    response = client.get("/api/v1/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["email"] == "apex_admin@apex.edu.in"
+    assert data["role"] == "INSTITUTION_ADMIN"
+    assert data["institution_id"] == "INST-001"
+
+def test_audit_02_institution_user_lifecycle_semantics():
+    """AUDIT-02: Disassociating user preserves user; deleting institution preserves user."""
+    from backend.app.models.institution import Institution
+    from backend.app.models.user import User
+    from backend.app.models.enums import UserRole
+    from backend.app.core.security import hash_password
+    import uuid
+
+    db = SessionLocal()
+    try:
+        test_inst_id = f"INST-TEST-{uuid.uuid4().hex[:6]}"
+        test_inst = Institution(
+            id=test_inst_id,
+            name="Temporary Test College",
+            code=f"TMP-{uuid.uuid4().hex[:4]}",
+            state="Goa",
+            status="ACTIVE"
+        )
+        db.add(test_inst)
+        db.commit()
+
+        test_user_id = f"usr-test-{uuid.uuid4().hex[:6]}"
+        test_user = User(
+            id=test_user_id,
+            email=f"temp_{uuid.uuid4().hex[:6]}@college.edu",
+            hashed_password=hash_password("DemoPassword@2026"),
+            full_name="Temporary Faculty",
+            role=UserRole.INSTITUTION_OPERATOR,
+            institution_id=test_inst_id,
+            is_active=True
+        )
+        db.add(test_user)
+        db.commit()
+
+        # Test 1: Disassociate user from institution
+        test_user.institution_id = None
+        db.commit()
+        db.refresh(test_user)
+        assert test_user.institution_id is None
+        reloaded_user = db.query(User).filter(User.id == test_user_id).first()
+        assert reloaded_user is not None
+
+        # Re-associate and delete institution
+        test_user.institution_id = test_inst_id
+        db.commit()
+
+        # Delete institution
+        db.delete(test_inst)
+        db.commit()
+
+        # User must still exist in DB without cascading deletion
+        persisted_user = db.query(User).filter(User.id == test_user_id).first()
+        assert persisted_user is not None
+        # Clean up
+        db.delete(persisted_user)
+        db.commit()
+    finally:
+        db.close()
+
+def test_audit_03_deactivated_account_login_audited(client):
+    """AUDIT-03: Deactivated account with valid password raises 401 and persists AuditEvent with outcome=BLOCKED."""
+    from backend.app.models.user import User
+    from backend.app.models.enums import UserRole
+    from backend.app.core.security import hash_password
+    import uuid
+
+    deact_email = f"deactivated_{uuid.uuid4().hex[:6]}@college.edu"
+    pwd = "DemoPassword@2026"
+    db = SessionLocal()
+    try:
+        deact_user = User(
+            id=f"usr-deact-{uuid.uuid4().hex[:6]}",
+            email=deact_email,
+            hashed_password=hash_password(pwd),
+            full_name="Deactivated Staff",
+            role=UserRole.INSTITUTION_OPERATOR,
+            institution_id="INST-001",
+            is_active=False
+        )
+        db.add(deact_user)
+        db.commit()
+
+        response = client.post("/api/v1/auth/login", json={
+            "email": deact_email,
+            "password": pwd
+        })
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
+        assert "deactivated" in response.json()["error"]["message"].lower()
+
+        # Verify audit event was committed with BLOCKED outcome
+        event = db.query(AuditEvent).filter(
+            AuditEvent.actor_email == deact_email,
+            AuditEvent.action == AuditAction.LOGIN,
+            AuditEvent.outcome == "BLOCKED"
+        ).order_by(AuditEvent.timestamp.desc()).first()
+        assert event is not None
+        assert "deactivated" in event.details.lower()
+    finally:
+        db.close()
+
+def test_audit_04_approved_intake_compound_uniqueness():
+    """AUDIT-04: Inserting duplicate intake for same institution+programme+year raises IntegrityError."""
+    from backend.app.models.institution import ApprovedIntake
+    from sqlalchemy.exc import IntegrityError
+    import uuid
+
+    db = SessionLocal()
+    try:
+        intake_1 = ApprovedIntake(
+            id=f"INTAKE-DUP-1-{uuid.uuid4().hex[:6]}",
+            institution_id="INST-001",
+            programme_id="PROG-001-CSE",
+            academic_year="2029-2030",
+            regular_intake=60,
+            supernumerary_intake=6
+        )
+        db.add(intake_1)
+        db.commit()
+
+        intake_2 = ApprovedIntake(
+            id=f"INTAKE-DUP-2-{uuid.uuid4().hex[:6]}",
+            institution_id="INST-001",
+            programme_id="PROG-001-CSE",
+            academic_year="2029-2030",  # Duplicate compound key
+            regular_intake=120,
+            supernumerary_intake=12
+        )
+        db.add(intake_2)
+        with pytest.raises(IntegrityError):
+            db.commit()
+    finally:
+        db.rollback()
+        db.close()
+
+def test_audit_05_seed_database_rollback_on_failure(monkeypatch):
+    """AUDIT-05: Seeding rollback on failure and re-raise exception."""
+    from backend.app.seed.seed_data import seed_database
+    from sqlalchemy.orm import Session
+
+    def failing_commit(self):
+        raise RuntimeError("Simulated DB commit error during seeding")
+
+    monkeypatch.setattr(Session, "commit", failing_commit)
+
+    with pytest.raises(RuntimeError, match="Simulated DB commit error during seeding"):
+        seed_database(reset=False)
+
+def test_audit_06_expired_jwt_token_rejection(client):
+    """AUDIT-06: Expired JWT token is rejected with 401 AUTHENTICATION_FAILED and expired message."""
+    from datetime import timedelta
+    from backend.app.core.security import create_access_token
+
+    expired_token = create_access_token(
+        subject="apex_admin@apex.edu.in",
+        role="INSTITUTION_ADMIN",
+        institution_id="INST-001",
+        expires_delta=timedelta(seconds=-10)
+    )
+    response = client.get("/api/v1/me", headers={"Authorization": f"Bearer {expired_token}"})
+    assert response.status_code == 401
+    data = response.json()
+    assert data["error"]["code"] == "AUTHENTICATION_FAILED"
+    assert "expired" in data["error"]["message"].lower()
+
+def test_audit_07_external_verifier_permission_denial(client):
+    """AUDIT-07: External verifier role is forbidden from browsing institutions (403 PERMISSION_DENIED)."""
+    from backend.app.models.user import User
+    from backend.app.models.enums import UserRole
+    from backend.app.core.security import hash_password
+    import uuid
+
+    db = SessionLocal()
+    verifier_email = f"verifier_{uuid.uuid4().hex[:6]}@external.gov.in"
+    try:
+        verifier_user = User(
+            id=f"usr-verif-{uuid.uuid4().hex[:6]}",
+            email=verifier_email,
+            hashed_password=hash_password("DemoPassword@2026"),
+            full_name="External Evaluator",
+            role=UserRole.EXTERNAL_VERIFIER,
+            institution_id=None,
+            is_active=True
+        )
+        db.add(verifier_user)
+        db.commit()
+
+        token = get_auth_token(client, verifier_email)
+        response = client.get("/api/v1/institutions", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 403
+        data = response.json()
+        assert data["error"]["code"] == "PERMISSION_DENIED"
+        assert "external verifier" in data["error"]["message"].lower()
+    finally:
+        db.close()
