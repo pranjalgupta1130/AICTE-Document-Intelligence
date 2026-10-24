@@ -14,7 +14,7 @@ STANDARD_FIELDS = {
     "academic_year": ["academic_year", "year", "session", "batch_year", "admission_year", "academic year"],
     "programme_id": ["programme_id", "program_id", "programme", "program", "course", "course_id", "branch", "discipline"],
     "enrolment_status": ["enrolment_status", "enrollment_status", "status", "admission_status", "enrollment status"],
-    "seat_type": ["seat_type", "quota", "category", "seat_category", "admission_type", "seat type"],
+    "seat_type": ["seat_type", "quota", "quota_type", "quota type", "category", "seat_category", "admission_type", "seat type"],
     "is_nri": ["is_nri", "nri", "nri_status", "nri category"],
     "is_oci": ["is_oci", "oci", "oci_status"],
     "is_fn": ["is_fn", "fn", "foreign_national", "foreign_student"]

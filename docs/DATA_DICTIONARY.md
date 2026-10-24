@@ -78,7 +78,7 @@ Individual student enrollment records.
 | `academic_year` | String | No | Enrolled academic year (e.g., "2026-2027") |
 | `programme_id` | String (FK) | No | Programme reference |
 | `enrolment_status` | Enum (`EnrolmentStatus`) | No | Active/Withdrawn/Completed |
-| `seat_type` | Enum (`SeatType`) | No | Regular, Management, EWS, TFW, FN |
+| `seat_type` | Enum (`SeatType`) | No | Sanctioned intake quota category (Canonical model field. Supported external spreadsheet column aliases during import include: `seat_type`, `quota`, `quota_type`, `quota type`, `category`, `seat_category`, `admission_type`, `seat type`). Values: `REGULAR`, `SUPERNUMERARY_EWS`, `SUPERNUMERARY_TFW`, `SUPERNUMERARY_FN`, `SUPERNUMERARY_OTHER`, `MANAGEMENT`, `NRI` |
 | `is_nri` | Boolean | No | Non-Resident Indian flag |
 | `is_oci` | Boolean | No | Overseas Citizen of India flag |
 | `is_fn` | Boolean | No | Foreign National flag |

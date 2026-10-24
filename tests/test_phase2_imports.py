@@ -715,3 +715,33 @@ def test_csv_rfc4180_multiline_and_crlf(client):
     assert data["total_rows"] == 2
     assert data["valid_rows"] == 2
 
+
+def test_import_with_quota_type_column_header(client):
+    """
+    P3-03 Verification Test:
+    - Verifies that external spreadsheet files using 'quota_type' or 'quota' as the column
+      header are successfully mapped to the canonical 'seat_type' database field.
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    csv_data = (
+        "institution_student_id,student_name,programme_id,academic_year,quota_type\n"
+        "APEX-QUOTA-01,Quota Student,PROG-001-CSE,2026-2027,MANAGEMENT\n"
+    )
+    files = {"file": ("quota_test.csv", csv_data, "text/csv")}
+    resp = client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token}"}, files=files, data={"academic_year": "2026-2027"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_rows"] == 1
+    assert data["valid_rows"] == 1
+
+    # Check imported record in database
+    db = SessionLocal()
+    try:
+        rec = db.query(StudentRecord).filter(StudentRecord.institution_student_id == "APEX-QUOTA-01").first()
+        assert rec is not None
+        assert rec.seat_type == SeatType.MANAGEMENT
+    finally:
+        if rec:
+            db.delete(rec)
+            db.commit()
+        db.close()

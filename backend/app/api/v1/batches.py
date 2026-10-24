@@ -7,6 +7,8 @@ from backend.app.core.permissions import get_current_user, enforce_institution_s
 from backend.app.db.session import get_db
 from backend.app.models.batch import ImportBatch
 from backend.app.models.enums import BatchStatus, FindingSeverity
+from backend.app.models.match import MatchCandidate
+from backend.app.models.student import StudentRecord
 from backend.app.models.user import User
 from backend.app.models.validation import ValidationFinding
 from backend.app.schemas.common import PaginatedList
@@ -119,10 +121,6 @@ def get_batch_matches(
     """
     Retrieve candidate duplicates flagged across institutions.
     """
-    from backend.app.models.match import MatchCandidate
-    from backend.app.models.student import StudentRecord
-    from backend.app.schemas.validation import MatchCandidateRead
-
     batch = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
     if not batch:
         raise NotFoundError(f"ImportBatch '{batch_id}' was not found.")
