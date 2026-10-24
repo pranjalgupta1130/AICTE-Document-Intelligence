@@ -85,3 +85,45 @@ def verify_student_record(
     db.commit()
 
     return result
+
+@router.get("/{student_ref}/certificate", summary="Synthetic degree certificate preview with APAAR and Student ID display (Brief Section 2 & 10)")
+def get_student_certificate_preview(
+    student_ref: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate synthetic certificate preview data displaying APAAR ID alongside institution Student ID
+    for degree-awarding bodies per Brief Section 2 (R16) and Section 10.
+    Clearly marked as synthetic prototype display.
+    """
+    record = db.query(StudentRecord).filter(
+        (StudentRecord.id == student_ref) |
+        (StudentRecord.institution_student_id == student_ref) |
+        (StudentRecord.apaar_id == student_ref)
+    ).first()
+
+    if not record:
+        raise NotFoundError(f"Student record '{student_ref}' not found.")
+
+    if current_user.role not in (UserRole.AICTE_ADMIN, UserRole.DEMO_ADMIN, UserRole.EXTERNAL_VERIFIER):
+        enforce_institution_scope(current_user, record.institution_id)
+
+    from backend.app.models.institution import Institution, Programme
+    inst = db.query(Institution).filter(Institution.id == record.institution_id).first()
+    prog = db.query(Programme).filter(Programme.id == record.programme_id).first()
+
+    return {
+        "is_synthetic_preview": True,
+        "disclaimer": "SYNTHETIC PROTOTYPE PREVIEW ONLY — NOT AN OFFICIAL LEGAL CREDENTIAL",
+        "institution_name": inst.name if inst else "AICTE Approved Institution",
+        "institution_code": inst.code if inst else "AICTE-INST",
+        "student_name": record.student_name or "Synthetic Student",
+        "institution_student_id": record.institution_student_id,
+        "apaar_id": record.apaar_id or "NOT_ASSIGNED",
+        "programme_name": prog.name if prog else "Technical Programme",
+        "academic_year": record.academic_year,
+        "seat_type": record.seat_type.value,
+        "enrolment_status": record.enrolment_status.value,
+        "verification_reference": f"CERT-PREV-{record.id[:8].upper()}"
+    }

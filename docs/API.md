@@ -639,10 +639,37 @@ Streamed CSV file (`Content-Type: text/csv`).
 
 ---
 
-## 9. Upcoming Phase Contracts (Phase 6: Hardening & Release Readiness)
+### GET `/api/v1/verification/{student_ref}/certificate`
+Synthetic degree certificate preview displaying student ID alongside APAAR ID for degree-awarding bodies (Brief Section 2 R16 and Section 10).
 
-For coordination with Member 2 (Frontend) and Member 3 (QA):
+**Permissions:** `INSTITUTION_ADMIN`, `INSTITUTION_OPERATOR`, `AICTE_ADMIN`, `DEMO_ADMIN`, `EXTERNAL_VERIFIER`. (Institution users strictly scoped to own institution).
 
-| Phase | Objective | Scope |
-|---|---|---|
-| Phase 6 | System Hardening & Release | Full security review, seed reset routines, performance verification, demo script walk-through |
+**Response (`200 OK`):**
+```json
+{
+  "is_synthetic_preview": true,
+  "disclaimer": "SYNTHETIC PROTOTYPE PREVIEW ONLY — NOT AN OFFICIAL LEGAL CREDENTIAL",
+  "institution_name": "Apex Institute of Technology",
+  "institution_code": "AIT-DELHI",
+  "student_name": "Alice Sharma",
+  "institution_student_id": "APEX-CS-001",
+  "apaar_id": "987654321012",
+  "programme_name": "B.Tech Computer Science & Engineering",
+  "academic_year": "2026-2027",
+  "seat_type": "REGULAR",
+  "enrolment_status": "ENROLLED",
+  "verification_reference": "CERT-PREV-A1B2C3D4"
+}
+```
+
+---
+
+## 9. Release Readiness (Phase 6 Complete)
+
+The backend and data platform has successfully completed all six implementation phases:
+1. **Phase 1**: Authentication, PBKDF2 Password Hashing, JWT Session Management, RBAC, Institution Isolation.
+2. **Phase 2**: Multi-Format Bulk Ingestion (CSV / XLSX), Column Mapping, Monotonic Batch Lineage.
+3. **Phase 3**: Deterministic Rule Engine, Intake Capacity Reconciliation, Verhoeff Syntax Check, Duplicate Detection.
+4. **Phase 4**: Concurrency Hardening, Batch Submission Lifecycle, Review Workflows, Operational & Central Dashboards.
+5. **Phase 5**: Replaceable APAAR Adapter & Mock Provider, 4D Data Quality Engine, Streaming CSV Export.
+6. **Phase 6**: System Hardening, Certificate Preview, Full Workflow Integration, Regression Testing.

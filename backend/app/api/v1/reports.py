@@ -8,7 +8,7 @@ import csv
 import io
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.app.core.errors import NotFoundError, PermissionDeniedError
@@ -43,57 +43,68 @@ def export_report_csv(
 
     target_inst = enforce_institution_scope(current_user, institution_id)
 
-    output = io.StringIO()
-    writer = csv.writer(output)
+    def generate_csv_chunks():
+        if report_type == "quality_summary":
+            # Export quality scores across batches
+            query = db.query(ImportBatch)
+            if target_inst:
+                query = query.filter(ImportBatch.institution_id == target_inst)
+            if batch_id:
+                query = query.filter(ImportBatch.id == batch_id)
 
-    if report_type == "quality_summary":
-        # Export quality scores across batches
-        query = db.query(ImportBatch)
-        if target_inst:
-            query = query.filter(ImportBatch.institution_id == target_inst)
-        if batch_id:
-            query = query.filter(ImportBatch.id == batch_id)
-
-        batches = query.order_by(ImportBatch.created_at.desc()).all()
-        writer.writerow([
-            "batch_id", "institution_id", "academic_year", "version", "status",
-            "total_records", "overall_quality_score", "quality_grade",
-            "completeness_score", "validity_score", "consistency_score", "uniqueness_score"
-        ])
-
-        for b in batches:
-            score = calculate_batch_quality_score(db, b)
-            writer.writerow([
-                b.id, b.institution_id, b.academic_year, b.version, b.status.value,
-                score.total_records, score.overall_score, score.grade,
-                score.completeness.score, score.validity.score, score.consistency.score, score.uniqueness.score
+            batches = query.order_by(ImportBatch.created_at.desc()).all()
+            header_buf = io.StringIO()
+            header_writer = csv.writer(header_buf)
+            header_writer.writerow([
+                "batch_id", "institution_id", "academic_year", "version", "status",
+                "total_records", "overall_quality_score", "quality_grade",
+                "completeness_score", "validity_score", "consistency_score", "uniqueness_score"
             ])
+            yield header_buf.getvalue()
 
-        filename = f"quality_summary_{target_inst or 'all'}.csv"
+            for b in batches:
+                row_buf = io.StringIO()
+                row_writer = csv.writer(row_buf)
+                score = calculate_batch_quality_score(db, b)
+                row_writer.writerow([
+                    b.id, b.institution_id, b.academic_year, b.version, b.status.value,
+                    score.total_records, score.overall_score, score.grade,
+                    score.completeness.score, score.validity.score, score.consistency.score, score.uniqueness.score
+                ])
+                yield row_buf.getvalue()
 
-    else:
-        # Default: Export row findings
-        query = db.query(ValidationFinding).join(ImportBatch)
-        if target_inst:
-            query = query.filter(ImportBatch.institution_id == target_inst)
-        if batch_id:
-            query = query.filter(ValidationFinding.batch_id == batch_id)
+        else:
+            # Default: Export row findings
+            query = db.query(ValidationFinding).join(ImportBatch)
+            if target_inst:
+                query = query.filter(ImportBatch.institution_id == target_inst)
+            if batch_id:
+                query = query.filter(ValidationFinding.batch_id == batch_id)
 
-        findings = query.order_by(ValidationFinding.batch_id, ValidationFinding.row_number).all()
-
-        writer.writerow([
-            "finding_id", "batch_id", "row_number", "field_name", "rule_code",
-            "severity", "status", "message", "expected_value", "actual_value", "suggested_action"
-        ])
-
-        for f in findings:
-            writer.writerow([
-                f.id, f.batch_id, f.row_number or "", f.field_name or "", f.rule_code,
-                f.severity.value, f.status.value, f.message,
-                f.expected_value or "", f.actual_value or "", f.suggested_action or ""
+            findings = query.order_by(ValidationFinding.batch_id, ValidationFinding.row_number).all()
+            header_buf = io.StringIO()
+            header_writer = csv.writer(header_buf)
+            header_writer.writerow([
+                "finding_id", "batch_id", "row_number", "field_name", "rule_code",
+                "severity", "status", "message", "expected_value", "actual_value", "suggested_action"
             ])
+            yield header_buf.getvalue()
 
-        filename = f"findings_report_{target_inst or batch_id or 'all'}.csv"
+            for f in findings:
+                row_buf = io.StringIO()
+                row_writer = csv.writer(row_buf)
+                row_writer.writerow([
+                    f.id, f.batch_id, f.row_number or "", f.field_name or "", f.rule_code,
+                    f.severity.value, f.status.value, f.message,
+                    f.expected_value or "", f.actual_value or "", f.suggested_action or ""
+                ])
+                yield row_buf.getvalue()
+
+    filename = (
+        f"quality_summary_{target_inst or 'all'}.csv"
+        if report_type == "quality_summary"
+        else f"findings_report_{target_inst or batch_id or 'all'}.csv"
+    )
 
     # Log export event in audit trail
     audit = AuditEvent(
@@ -110,9 +121,8 @@ def export_report_csv(
     db.add(audit)
     db.commit()
 
-    csv_data = output.getvalue()
-    return Response(
-        content=csv_data,
+    return StreamingResponse(
+        generate_csv_chunks(),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
