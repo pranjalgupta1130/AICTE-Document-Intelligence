@@ -126,7 +126,7 @@ export const InstitutionDashboardPage: React.FC<InstitutionDashboardPageProps> =
   };
 
   return (
-    <div className="bg-surface-canvas font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
+    <div className="tricolor-slant-bg font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-primary text-on-primary px-space-md py-space-sm rounded-lg shadow-xl font-body-sm text-body-sm flex items-center gap-space-xs animate-bounce border border-secondary/40">
@@ -280,10 +280,10 @@ export const InstitutionDashboardPage: React.FC<InstitutionDashboardPageProps> =
       </header>
 
       {/* MAIN CONTENT WORKSPACE */}
-      <main className="w-full pt-32 bg-surface-canvas min-h-screen">
+      <main className="w-full pt-32 bg-transparent min-h-screen">
         <div className="flex flex-col w-full">
           {/* Administrative Action Bar & Scope Filter */}
-          <div className="bg-surface-card shadow-sm px-gutter-md py-space-md mb-space-lg border-b border-border-subtle">
+          <div className="bg-surface-card/85 backdrop-blur-md shadow-sm px-gutter-md py-space-md mb-space-lg border-b border-border-subtle">
             <div className="max-w-[1440px] mx-auto flex flex-col xl:flex-row xl:items-center justify-between gap-space-md">
               {/* Institutional Contextual Hierarchy */}
               <div className="flex flex-col">
