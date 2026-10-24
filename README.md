@@ -1,113 +1,137 @@
-# VeriReg AI — Member 1: Document Intelligence & Validation
+# SIH 26263: APAAR-Based Student Data Management & Verification Platform
 
 ## Overview
-This module implements **Member 1: Document Intelligence & Validation** for VeriReg AI. It provides an explainable, deterministic document extraction, regulatory compliance verification, duplicate detection, signature inspection, and risk stratification engine designed to integrate cleanly with Member 2’s backend.
+This repository contains the backend and data platform for **SIH 26263**: an automated, role-aware **APAAR ID-based student data management and verification platform** developed for AICTE-approved institutions.
+
+The platform enables institutions to ingest, validate, and monitor student-level enrollment records, detect cross-institution and within-batch duplicates, perform intake reconciliation against approved capacities, and maintain transparent, explainable audit trails.
 
 ---
 
-## Architecture & Modules
+## Architecture & Technology Stack
+
+- **Framework**: Python 3.11+ / FastAPI
+- **Data Validation & Schemas**: Pydantic v2
+- **ORM & Persistence**: SQLAlchemy 2.0 / SQLite (dev) / PostgreSQL (production target)
+- **Security**:
+  - Salted password hashing via standard library PBKDF2-HMAC-SHA256 (100,000 iterations, 16-byte cryptographically secure random salt)
+  - Signed JWT bearer tokens (PyJWT, HS256)
+  - Server-side Role-Based Access Control (RBAC) and strict institution data isolation
+- **Auditing**: Append-only operational audit logging (`audit_events`) capturing actor, action, object, outcome, and timestamp
+- **Testing**: Pytest with FastAPI TestClient / HTTPX
+
+---
+
+## Repository Layout
 
 ```
-verireg/
-├── __init__.py               # Public API exports
-├── schemas.py                # Stable Pydantic v2 JSON contracts
-├── extractor.py              # PDF parsing, metadata, bounding box coordinates, and perceptual dHash
-├── field_extraction.py       # Grounded structured field extraction with verbatim evidence
-├── signatures.py             # PDF CMS / PKCS#7 /Sig digital signature inspection
-├── rules_engine.py           # Configurable AICTE Approval Process Handbook (APH) regulatory rules
-├── consistency.py            # Cross-document consistency & entity reconciliation
-├── duplicate_detector.py     # SHA-256 exact & perceptual image duplicate detection
-├── risk_scoring.py           # Anomaly risk score calculation & 3-tier workflow routing
-├── pipeline.py               # End-to-end pipeline orchestrator
-├── api.py                    # Ready-to-mount FastAPI APIRouter for Member 2
-└── synthetic_docs.py         # Synthetic PDF generator for automated testing
+SIH_26263/
+├── backend/
+│   └── app/
+│       ├── __init__.py
+│       ├── main.py               # FastAPI application, CORS, Request ID middleware, error handlers
+│       ├── core/
+│       │   ├── config.py         # Application settings & environment configurations
+│       │   ├── security.py       # PBKDF2 password hashing & JWT token operations
+│       │   ├── permissions.py    # Server-side RBAC & institution boundary enforcement
+│       │   └── errors.py         # Standardized error envelopes (code, message, request_id)
+│       ├── models/               # SQLAlchemy 2.0 ORM models
+│       │   ├── enums.py          # UserRole, EnrolmentStatus, SeatType, BatchStatus, etc.
+│       │   ├── user.py           # User account entity
+│       │   ├── institution.py    # Institution, Programme, ApprovedIntake entities
+│       │   ├── student.py        # StudentRecord entity
+│       │   ├── batch.py          # ImportBatch entity
+│       │   ├── validation.py     # ValidationFinding entity
+│       │   ├── match.py          # MatchCandidate entity
+│       │   ├── verification.py   # VerificationAttempt entity
+│       │   └── audit.py          # AuditEvent entity
+│       ├── db/
+│       │   └── session.py        # Database engine, sessionmaker, init_db
+│       ├── schemas/              # Pydantic v2 schemas
+│       │   ├── auth.py           # LoginRequest, UserRead, TokenResponse
+│       │   ├── institution.py    # InstitutionRead, ProgrammeRead, ApprovedIntakeRead
+│       │   └── common.py         # PaginatedList, HealthResponse, ErrorEnvelope
+│       ├── api/
+│       │   └── v1/
+│       │       ├── router.py     # Master v1 APIRouter
+│       │       ├── auth.py       # POST /api/v1/auth/login, GET /api/v1/auth/me
+│       │       ├── institutions.py # GET /api/v1/institutions (scoped by institution)
+│       │       ├── intake.py     # GET /api/v1/intake (scoped by institution)
+│       │       └── health.py     # GET /health, GET /api/v1/health
+│       └── seed/
+│           └── seed_data.py      # Idempotent synthetic database seeder
+├── docs/
+│   ├── API.md                    # Frozen v1 API contract & upcoming endpoints
+│   └── DATA_DICTIONARY.md        # Data models, field constraints, enums & rule catalog
+└── tests/
+    └── test_phase1_backend.py    # Automated test suite (21 tests)
 ```
 
 ---
 
-## Member 2 Backend Integration Contract
+## Role-Based Access Control & Institution Scoping
 
-Member 2 can integrate Member 1 via Python module or via FastAPI:
+Access control is enforced strictly on the server side:
 
-### 1. Python Direct Integration
-
-```python
-from verireg import DocumentIntelligencePipeline
-
-pipeline = DocumentIntelligencePipeline()
-
-# Process an entire application filing (multiple PDFs):
-result = pipeline.process_application(
-    application_id="APP-2026-001",
-    document_paths=["/path/to/land_title.pdf", "/path/to/building_plan.pdf"]
-)
-
-# Access JSON-serializable Pydantic model
-print(result.risk_tier)  # ACCELERATED | CLARIFICATION | ESCALATION
-print(result.risk_score) # 0.0 - 100.0
-print(result.model_dump())
-```
-
-### 2. FastAPI Mount Integration
-
-```python
-from fastapi import FastAPI
-from verireg.api import router as member1_router
-
-app = FastAPI()
-app.include_router(member1_router, prefix="/api/v1/member1")
-```
-
-#### Available Endpoints:
-- `POST /api/v1/member1/process-document`: Ingests a single PDF and returns document metadata, pages, extracted fields grounded with bounding boxes, and digital signature status.
-- `POST /api/v1/member1/process-application`: Ingests an `application_id` and a batch of multipart PDF files; executes extraction, statutory rule verification, cross-document reconciliation, duplicate detection, and risk tier prioritization.
+| Role | Permitted Actions | Restrictions |
+|---|---|---|
+| **`AICTE_ADMIN`** | View national monitoring summaries, list all institutions, query all intakes, inspect exceptions | Cannot modify institutional records directly without audit |
+| **`INSTITUTION_ADMIN`** | Manage own institution profile, query own intake, review own student batches | Strictly restricted to own `institution_id`; access to other institutions returns `403 INSTITUTION_SCOPE_VIOLATION` |
+| **`INSTITUTION_OPERATOR`** | Import data batches, preview records, inspect findings | Same institution boundaries; cannot alter administrative settings |
+| **`DEMO_ADMIN`** | Reset seed data and configure evaluation demonstrations | National oversight; clear demo labelling |
 
 ---
 
-## Regulatory Rules & Statutory Provenance
+## Preconfigured Seed Accounts
 
-In accordance with the project specification audit, all rules declare whether their numerical threshold is authoritatively verified or an unverified configurable benchmark:
+All demo accounts are preconfigured with password: `DemoPassword@2026`
 
-| Rule ID | Standard / Threshold | Category | Provenance Status | Deficient Action |
-|---|---|---|---|---|
-| `RULE-LAND-001` | `>= 2.50 Acres` (Configured default) | Land | **Unverified Benchmark** (Location dependent in APH) | DEFICIENCY |
-| `RULE-ARCH-002` | `>= 4000.0 Sqm` Carpet Area | Building | **Unverified Benchmark** (Intake dependent in APH) | DEFICIENCY |
-| `RULE-FIN-003` | `>= INR 1,500,000.00` Joint FDR | FDR | **Unverified Benchmark** (Program dependent in APH) | DEFICIENCY |
-| `RULE-FIRE-004` | Active Fire & Life Safety NOC | FireSafety | **Authoritatively Verified** (AICTE Statutory Mandate) | CRITICAL |
-| `RULE-ACAD-005` | `<= 20.0:1` Student-Faculty Ratio | Faculty | **Authoritatively Verified** (AICTE Handbook Mandate) | DEFICIENCY |
-| `RULE-AUTH-006` | Valid PKCS#7 / CMS Digital Signature | Authentication | **Authoritatively Verified** (AICTE IT Guidelines) | CRITICAL / INDETERMINATE |
-
----
-
-## Digital Signature Inspection Architecture
-
-Digital signatures are inspected across four separate, genuine verification levels without fabricated claims:
-1. **Signature Detection (`signatures_detected`)**: Checks PDF document catalog, form widgets, and internal `/Sig` dictionary xrefs.
-2. **Byte-Range Integrity (`integrity_verified`)**: Evaluates byte-range hash digests. Explicitly marked `None` / unverified if external cryptographic engines (pyHanko) are not configured.
-3. **Certificate Chain Trust (`certificate_chain_trusted`)**: Checks validation up to a Root CA. Explicitly marked `None` / unverified when no local trust store is configured.
-4. **Signer Identity (`signer_identity`)**: Captures signer Common Name / DN from certificate dictionary.
+| Role | Email | Institution Scope | Name |
+|---|---|---|---|
+| `AICTE_ADMIN` | `aicte_admin@aicte.gov.in` | National (All Institutions) | AICTE National Reviewer |
+| `INSTITUTION_ADMIN` | `apex_admin@apex.edu.in` | `INST-001` (Apex Institute of Tech) | Apex Institution Admin |
+| `INSTITUTION_OPERATOR` | `apex_operator@apex.edu.in` | `INST-001` (Apex Institute of Tech) | Apex Ingestion Operator |
+| `INSTITUTION_ADMIN` | `bharat_admin@bharat.edu.in` | `INST-002` (Bharat Eng College) | Bharat Institution Admin |
+| `DEMO_ADMIN` | `demo_admin@apaar.gov.in` | National Scope | Hackathon Demonstration Lead |
 
 ---
 
-## Risk Scoring, Explainability & Non-Forgery Notice
+## Quickstart & Commands
 
-- Every point in `risk_score` (0.0 to 100.0) is transparently traceable in `findings_audit_trail`.
-- **Statutory Non-Forgery Notice**: Every pipeline run outputs an explicit legal notice stating that risk scores and rule findings are algorithmic prioritization observations to guide human scrutiny, and do not constitute proof of fraud or forgery, nor automatic grounds for rejection.
-
----
-
-## Workflow Risk Tiers
-
-- **`ACCELERATED` (Score 0 – 20)**: All statutory rules satisfied, no cryptographic anomalies, no duplicate assets detected. Eligible for fast-track clearance.
-- **`CLARIFICATION` (Score 21 – 60)**: Minor clerical discrepancies or indeterminate non-critical parameters. Automated deficiency memo generated for 14-day institutional response.
-- **`ESCALATION` (Score 61 – 100)**: Major statutory deficit (sub-standard land, invalid/missing fire NOC, altered documents, duplicate campus photos). Routed to Standing Hearing Committee (SHC) and Expert Visit Committee (EVC).
-
----
-
-## Automated Test Suite
-
-Run all tests:
+### 1. Initialize and Seed the Database
 ```powershell
-python -m pytest tests/test_member1.py -v
+python -m backend.app.seed.seed_data --reset
 ```
-All 8 test suites pass deterministically using synthetic test documents.
+
+### 2. Run the Automated Test Suite
+```powershell
+python -m pytest -v
+```
+
+### 3. Start the Backend API Server
+```powershell
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Once running, access:
+- **Swagger Interactive API Documentation**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- **ReDoc API Contract**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+- **Health Check Endpoint**: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
+
+---
+
+## API Error Handling
+
+All non-2xx API errors return a standardized JSON error envelope:
+
+```json
+{
+  "error": {
+    "code": "INSTITUTION_SCOPE_VIOLATION",
+    "message": "Cross-institution access denied. Caller bound to 'INST-001' cannot access records of 'INST-002'.",
+    "details": null,
+    "request_id": "req-8b6fa201"
+  }
+}
+```
+
+Every response includes an `X-Request-ID` header for end-to-end audit traceability.
