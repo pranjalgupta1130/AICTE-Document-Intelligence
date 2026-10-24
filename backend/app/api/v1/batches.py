@@ -153,3 +153,23 @@ def submit_batch_endpoint(
     """
     from backend.app.services.workflow_service import submit_batch
     return submit_batch(db=db, batch_id=batch_id, current_user=current_user, request=request)
+
+@router.get("/{batch_id}/quality", summary="Get explainable data quality score and component breakdown")
+def get_batch_quality_score(
+    batch_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve transparent data quality score (0-100) and dimensional breakdown
+    (Completeness, Validity, Consistency, Uniqueness).
+    Evaluates dataset hygiene; is NOT a fraud score.
+    """
+    from backend.app.services.quality_service import calculate_batch_quality_score
+
+    batch = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
+    if not batch:
+        raise NotFoundError(f"ImportBatch '{batch_id}' was not found.")
+
+    enforce_institution_scope(current_user, batch.institution_id)
+    return calculate_batch_quality_score(db=db, batch=batch)

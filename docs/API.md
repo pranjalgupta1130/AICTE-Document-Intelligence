@@ -545,11 +545,104 @@ All non-2xx responses follow a uniform structure:
 
 ---
 
-## 8. Upcoming Phase Contracts (Phase 5)
+## 8. Phase 5 Integration & Differentiators
+
+### GET `/api/v1/verification/{student_ref}`
+Privacy-restricted single-record APAAR verification lookup. Clearly marks mock results as simulated and logs an immutable audit event.
+
+**Permissions:** `INSTITUTION_ADMIN`, `INSTITUTION_OPERATOR`, `AICTE_ADMIN`, `DEMO_ADMIN`, `EXTERNAL_VERIFIER`. (Institution users strictly scoped to own institution).
+
+**Response (`200 OK`):**
+```json
+{
+  "apaar_id": "987654321012",
+  "provider": "MOCK_APAAR_ADAPTER",
+  "outcome": "MOCK_VERIFIED",
+  "is_official": false,
+  "reference_id": "mock-ref-a1b2c3d4e5f6",
+  "student_name": "Verifiable Student",
+  "institution_id": "INST-001",
+  "message": "[SIMULATED] Synthetically verified against Mock APAAR Adapter.",
+  "details": "Valid 12-digit format and Verhoeff checksum. Clearly marked as simulated verification."
+}
+```
+
+---
+
+### GET `/api/v1/batches/{id}/quality`
+Retrieve transparent, explainable data quality score (0-100) and dimensional breakdown (Completeness, Validity, Consistency, Uniqueness). Framed strictly as dataset hygiene, never as a fraud score.
+
+**Permissions:** `INSTITUTION_ADMIN`, `INSTITUTION_OPERATOR`, `AICTE_ADMIN`, `DEMO_ADMIN`.
+
+**Response (`200 OK`):**
+```json
+{
+  "batch_id": "BATCH-001",
+  "academic_year": "2026-2027",
+  "total_records": 120,
+  "overall_score": 96.5,
+  "grade": "EXCELLENT",
+  "completeness": {
+    "dimension_name": "Completeness",
+    "weight": 0.25,
+    "score": 100.0,
+    "total_checks": 240,
+    "passed_checks": 240,
+    "deductions": 0.0,
+    "explanation": "0 missing field occurrences across student records."
+  },
+  "validity": {
+    "dimension_name": "Validity",
+    "weight": 0.3,
+    "score": 95.0,
+    "total_checks": 120,
+    "passed_checks": 114,
+    "deductions": 5.0,
+    "explanation": "6 records with invalid APAAR syntax or failed Verhoeff checksums."
+  },
+  "consistency": {
+    "dimension_name": "Consistency",
+    "weight": 0.25,
+    "score": 100.0,
+    "total_checks": 120,
+    "passed_checks": 120,
+    "deductions": 0.0,
+    "explanation": "0 records with category/seat inconsistency or intake allocation breaches."
+  },
+  "uniqueness": {
+    "dimension_name": "Uniqueness",
+    "weight": 0.2,
+    "score": 100.0,
+    "total_checks": 120,
+    "passed_checks": 120,
+    "deductions": 0.0,
+    "explanation": "0 records with duplicate roll numbers or APAAR collision candidates."
+  },
+  "explanation": "Transparent dataset hygiene score: 96.5/100 (EXCELLENT) based on completeness, validity, consistency, and uniqueness."
+}
+```
+
+---
+
+### GET `/api/v1/reports/export`
+Export permission-scoped CSV reports with mandatory audit logging.
+
+**Query Parameters:**
+- `batch_id`: Optional filter by batch ID.
+- `institution_id`: Optional filter by institution (enforced against caller).
+- `report_type`: `'findings'` (default) or `'quality_summary'`.
+
+**Permissions:** `INSTITUTION_ADMIN`, `INSTITUTION_OPERATOR`, `AICTE_ADMIN`, `DEMO_ADMIN` (Forbidden to `EXTERNAL_VERIFIER`).
+
+**Response (`200 OK`):**
+Streamed CSV file (`Content-Type: text/csv`).
+
+---
+
+## 9. Upcoming Phase Contracts (Phase 6: Hardening & Release Readiness)
 
 For coordination with Member 2 (Frontend) and Member 3 (QA):
 
-| Method | Path | Phase | Description |
-|---|---|---|---|
-| `GET` | `/api/v1/verification/{student_ref}` | Phase 5 | Privacy-restricted single-record lookup (returns `MOCK_VERIFIED`) |
-| `GET` | `/api/v1/reports/export` | Phase 5 | CSV export of validated student batches and finding reports |
+| Phase | Objective | Scope |
+|---|---|---|
+| Phase 6 | System Hardening & Release | Full security review, seed reset routines, performance verification, demo script walk-through |
