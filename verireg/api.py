@@ -8,6 +8,8 @@ import shutil
 import tempfile
 from typing import List
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
+from .csv_export import build_findings_csv
 from .pipeline import DocumentIntelligencePipeline
 from .schemas import DocumentAnalysisResult, PipelineRunResult
 
@@ -76,3 +78,58 @@ async def process_application_dossier(
                     os.remove(path)
                 except Exception:
                     pass
+
+
+@router.post(
+    "/export-findings-csv",
+    response_class=StreamingResponse,
+    summary="Export batch validation findings as a downloadable CSV report",
+    description=(
+        "Accepts a completed ``PipelineRunResult`` payload (the JSON body returned by "
+        "``/process-application``) and streams it back as a UTF-8 encoded CSV file.\n\n"
+        "**Permissions**: The caller is responsible for institution-level RBAC before "
+        "forwarding a result payload to this endpoint. The endpoint itself does not persist "
+        "any data and only operates on the submitted payload.\n\n"
+        "**Empty report**: If the application has no findings, a CSV with headers only is "
+        "returned (HTTP 200) rather than an error.\n\n"
+        "**Formula injection**: All untrusted text values are sanitised against CSV "
+        "formula-injection by prefixing dangerous leading characters."
+    ),
+    responses={
+        200: {
+            "content": {"text/csv": {}},
+            "description": "CSV file containing all findings for the application.",
+        },
+        422: {"description": "Invalid or malformed PipelineRunResult payload."},
+    },
+)
+async def export_findings_csv(result: PipelineRunResult) -> StreamingResponse:
+    """Export a ``PipelineRunResult``'s findings as a downloadable CSV.
+
+    The response sets ``Content-Disposition: attachment`` so browsers and HTTP
+    clients download the file rather than displaying it inline.  The filename
+    embeds the ``application_id`` for traceability.
+
+    Authorization
+    -------------
+    This endpoint is mounted inside the same ``APIRouter`` as the existing
+    document-processing routes.  Member 2's backend is expected to apply its
+    own authentication and institution-isolation middleware **before** routing
+    the request here, consistent with how it guards ``/process-application``.
+    """
+    app_id = (result.application_id or "unknown").replace("/", "_").replace("\\", "_")
+    filename = f"findings_{app_id}.csv"
+
+    try:
+        csv_content = build_findings_csv(result)
+    except Exception as exc:  # pragma: no cover  – guard against unexpected serialisation errors
+        raise HTTPException(
+            status_code=500,
+            detail=f"CSV generation failed: {exc}",
+        ) from exc
+
+    return StreamingResponse(
+        iter([csv_content.encode("utf-8")]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
