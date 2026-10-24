@@ -47,3 +47,5 @@ class MatchCandidateRead(BaseModel):
     confidence: float
     status: MatchStatus
     resolution_reason: Optional[str] = None
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[Any] = None

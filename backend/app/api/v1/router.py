@@ -6,6 +6,8 @@ from backend.app.api.v1.intake import router as intake_router
 from backend.app.api.v1.health import router as health_router
 from backend.app.api.v1.imports import router as imports_router
 from backend.app.api.v1.batches import router as batches_router
+from backend.app.api.v1.reviews import router as reviews_router
+from backend.app.api.v1.dashboard import router as dashboard_router
 from backend.app.schemas.auth import UserRead
 
 api_router = APIRouter()
@@ -25,4 +27,6 @@ api_router.include_router(institutions_router)
 api_router.include_router(intake_router)
 api_router.include_router(imports_router)
 api_router.include_router(batches_router)
+api_router.include_router(reviews_router)
+api_router.include_router(dashboard_router)
 api_router.include_router(health_router)

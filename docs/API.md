@@ -351,7 +351,155 @@ Retrieve flagged cross-institution or intra-institution duplicate match candidat
 
 ---
 
-## 5. Core System Health
+## 5. Phase 4 Workflows & Analytics (Batch 2)
+
+### POST `/api/v1/batches/{id}/submit`
+Formally submit a validated student record batch and lock it for official AICTE reconciliation.
+
+**Permissions:** `INSTITUTION_ADMIN`, `AICTE_ADMIN`, `DEMO_ADMIN` (Forbidden to `INSTITUTION_OPERATOR` and `EXTERNAL_VERIFIER`).
+
+**Request Body:**
+```json
+{
+  "allow_warnings": true,
+  "comments": "Finalized batch after physical document verification."
+}
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "batch_id": "BATCH-001",
+  "institution_id": "INST-001",
+  "status": "SUBMITTED",
+  "version": 1,
+  "submitted_at": "2026-10-24T17:40:00Z",
+  "submitted_by": "apex_admin@apex.edu.in",
+  "valid_rows": 120,
+  "error_rows": 0,
+  "warning_rows": 2,
+  "message": "Batch has been successfully submitted and locked for review."
+}
+```
+
+---
+
+### POST `/api/v1/reviews/{finding_id}`
+Review an explainable validation finding. Resolving or dismissing a blocking error dynamically recalculates batch error counters.
+
+**Permissions:** `INSTITUTION_ADMIN`, `INSTITUTION_OPERATOR`, `AICTE_ADMIN`, `DEMO_ADMIN` (scoped strictly to own institution).
+
+**Request Body:**
+```json
+{
+  "decision": "RESOLVED",
+  "reason": "Student APAAR verified against DigiLocker extract."
+}
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "finding_id": "fnd-123456",
+  "batch_id": "BATCH-001",
+  "status": "RESOLVED",
+  "reviewed_by": "apex_admin@apex.edu.in",
+  "reviewed_at": "2026-10-24T17:40:00Z",
+  "reason": "Student APAAR verified against DigiLocker extract.",
+  "message": "Finding 'fnd-123456' successfully reviewed as 'RESOLVED'."
+}
+```
+
+---
+
+### POST `/api/v1/reviews/matches/{match_id}`
+Review a cross-institution duplicate candidate.
+
+**Permissions:** `AICTE_ADMIN`, `DEMO_ADMIN` only.
+
+**Request Body:**
+```json
+{
+  "status": "CONFIRMED_DUPLICATE",
+  "resolution_reason": "Verified simultaneous enrollment at both institutions."
+}
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "id": "mat-123456",
+  "record_a_id": "stu-001",
+  "record_b_id": "stu-002",
+  "institution_a_id": "INST-001",
+  "institution_b_id": "INST-002",
+  "matching_signal": "CROSS_INSTITUTION_DUPLICATE_APAAR",
+  "confidence": 1.0,
+  "status": "CONFIRMED_DUPLICATE",
+  "resolution_reason": "Verified simultaneous enrollment at both institutions.",
+  "reviewed_by": "usr-aicte-adm-01",
+  "reviewed_at": "2026-10-24T17:40:00Z"
+}
+```
+
+---
+
+### GET `/api/v1/dashboard/institution`
+Retrieve operational dashboard metrics scoped to caller's institution.
+
+**Permissions:** `INSTITUTION_ADMIN`, `INSTITUTION_OPERATOR`, `AICTE_ADMIN`, `DEMO_ADMIN`.
+
+**Response (`200 OK`):**
+```json
+{
+  "institution_id": "INST-001",
+  "institution_name": "Apex Institute of Technology",
+  "academic_year": "2026-2027",
+  "total_batches": 2,
+  "latest_batch_status": "VALIDATED",
+  "total_student_records": 120,
+  "valid_records_count": 120,
+  "error_records_count": 0,
+  "missing_apaar_count": 5,
+  "duplicate_flags_count": 0,
+  "intake_utilization_pct": 50.0,
+  "total_approved_intake": 240,
+  "total_enrolled_students": 120,
+  "programme_intake_breakdown": [],
+  "recent_batches": [],
+  "recent_activity": []
+}
+```
+
+---
+
+### GET `/api/v1/dashboard/aicte`
+Retrieve national aggregate monitoring metrics across all AICTE institutions.
+
+**Permissions:** `AICTE_ADMIN`, `DEMO_ADMIN` only.
+
+**Response (`200 OK`):**
+```json
+{
+  "academic_year": "2024-2025",
+  "total_institutions": 3,
+  "total_submissions": 0,
+  "total_batches": 0,
+  "total_enrolled_students": 0,
+  "total_approved_intake": 720,
+  "aggregate_intake_utilization_pct": 0.0,
+  "total_open_exceptions": 0,
+  "total_candidate_duplicates": 0,
+  "confirmed_duplicates_count": 0,
+  "dismissed_duplicates_count": 0,
+  "institution_breakdown": [],
+  "recent_activity": []
+}
+```
+
+---
+
+## 6. Core System Health
 
 ### GET `/health`
 System liveness and readiness probe.
@@ -369,7 +517,7 @@ System liveness and readiness probe.
 
 ---
 
-## 6. Standard Error Response Shape
+## 7. Standard Error Response Shape
 
 All non-2xx responses follow a uniform structure:
 
@@ -397,16 +545,11 @@ All non-2xx responses follow a uniform structure:
 
 ---
 
-## 7. Upcoming Phase Contracts (Phases 3 – 5)
+## 8. Upcoming Phase Contracts (Phase 5)
 
 For coordination with Member 2 (Frontend) and Member 3 (QA):
 
 | Method | Path | Phase | Description |
 |---|---|---|---|
-| `POST` | `/api/v1/batches/{id}/validate` | Phase 3 | Execute rules engine, compute findings, calculate intake exceedance |
-| `POST` | `/api/v1/batches/{id}/submit` | Phase 4 | Transition batch from Draft/Validated to Submitted; locks batch |
-| `GET` | `/api/v1/dashboard/institution` | Phase 4 | Institution metrics: total records, valid/invalid, missing APAAR, intake % |
-| `GET` | `/api/v1/dashboard/aicte` | Phase 4 | AICTE monitoring: aggregate enrollment, exception queue, duplicate flags |
-| `POST` | `/api/v1/reviews/{finding_id}` | Phase 4 | Record human review outcome (Dismiss/Confirm) with mandatory reason |
 | `GET` | `/api/v1/verification/{student_ref}` | Phase 5 | Privacy-restricted single-record lookup (returns `MOCK_VERIFIED`) |
 | `GET` | `/api/v1/reports/export` | Phase 5 | CSV export of validated student batches and finding reports |

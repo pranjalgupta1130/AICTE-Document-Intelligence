@@ -12,6 +12,7 @@ from backend.app.models.validation import ValidationFinding
 from backend.app.schemas.common import PaginatedList
 from backend.app.schemas.imports import BatchRead, ValidationFindingRead
 from backend.app.schemas.validation import BatchValidationResponse, MatchCandidateRead
+from backend.app.schemas.workflows import BatchSubmitRequest, BatchSubmitResponse
 
 router = APIRouter(prefix="/batches", tags=["Batches"])
 
@@ -138,3 +139,17 @@ def get_batch_matches(
     matches = query.offset(offset).limit(limit).all()
     items = [MatchCandidateRead.model_validate(m) for m in matches]
     return PaginatedList[MatchCandidateRead](items=items, total=total)
+
+@router.post("/{batch_id}/submit", response_model=BatchSubmitResponse, summary="Finalize and submit validated batch")
+def submit_batch_endpoint(
+    batch_id: str,
+    request: BatchSubmitRequest = BatchSubmitRequest(),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Submit a validated batch to lock the data for official AICTE reconciliation.
+    Requires batch to be in VALIDATED state with no unresolved blocking errors.
+    """
+    from backend.app.services.workflow_service import submit_batch
+    return submit_batch(db=db, batch_id=batch_id, current_user=current_user, request=request)
