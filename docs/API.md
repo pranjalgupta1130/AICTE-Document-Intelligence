@@ -281,6 +281,76 @@ Retrieve paginated row-level parsing and validation findings for a batch.
 
 ---
 
+### POST `/api/v1/batches/{batch_id}/validate`
+Execute Phase 3 deterministic validation rules, duplicate checks, and approved intake reconciliation.
+Updates batch status to `VALIDATED` (if 0 blocking errors) or `NEEDS_CORRECTION` (if blocking errors exist).
+Records an audit event with action `BATCH_VALIDATE`.
+
+**Response (`200 OK`):**
+```json
+{
+  "batch_id": "BATCH-20261024-5ECD1E",
+  "institution_id": "INST-001",
+  "status": "NEEDS_CORRECTION",
+  "validation_summary": {
+    "total_records": 100,
+    "valid_records": 95,
+    "error_count": 2,
+    "warning_count": 4,
+    "info_count": 0,
+    "intake_exceeded_count": 2,
+    "duplicate_candidate_count": 2
+  },
+  "intake_reconciliation": [
+    {
+      "programme_id": "PROG-001-CSE",
+      "programme_name": "B.Tech Computer Science & Engineering",
+      "academic_year": "2026-2027",
+      "regular_approved": 60,
+      "regular_enrolled": 62,
+      "regular_exceeded": 2,
+      "supernumerary_approved": 6,
+      "supernumerary_enrolled": 2,
+      "supernumerary_exceeded": 0,
+      "total_approved": 66,
+      "total_enrolled": 64,
+      "total_exceeded": 0,
+      "status": "EXCEEDED"
+    }
+  ],
+  "findings_count": 6,
+  "message": "Validation completed. Batch status set to NEEDS_CORRECTION."
+}
+```
+
+---
+
+### GET `/api/v1/batches/{batch_id}/matches`
+Retrieve flagged cross-institution or intra-institution duplicate match candidates associated with student records in this batch for verification.
+
+**Response (`200 OK`):**
+```json
+[
+  {
+    "id": "match-uuid-1",
+    "record_a_id": "rec-uuid-1",
+    "record_b_id": "rec-uuid-2",
+    "match_type": "CROSS_INSTITUTION_DUPLICATE_APAAR",
+    "confidence_score": 1.0,
+    "match_details": {
+      "apaar_id": "987654321012",
+      "student_name": "Aarav Sharma",
+      "other_institution_id": "inst-2"
+    },
+    "review_status": "FLAGGED",
+    "reviewer_user_id": null,
+    "created_at": "2026-10-24T12:00:00Z"
+  }
+]
+```
+
+---
+
 ## 5. Core System Health
 
 ### GET `/health`

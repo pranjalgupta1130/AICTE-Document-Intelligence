@@ -34,4 +34,9 @@ class Settings(BaseModel):
     MAX_ZIP_ENTRIES: int = int(os.getenv("MAX_ZIP_ENTRIES", 100))                           # XLSX zip bomb entry limit
     MAX_UNCOMPRESSED_XLSX_BYTES: int = int(os.getenv("MAX_UNCOMPRESSED_XLSX_BYTES", 100 * 1024 * 1024)) # 100 MB decompressed limit
 
+    # Validation Engine Configuration (Phase 3)
+    APAAR_ID_LENGTH: int = int(os.getenv("APAAR_ID_LENGTH", 12))
+    APAAR_MANDATORY: bool = os.getenv("APAAR_MANDATORY", "false").lower() in ("true", "1", "yes")
+    ENFORCE_VERHOEFF_CHECKSUM: bool = os.getenv("ENFORCE_VERHOEFF_CHECKSUM", "true").lower() in ("true", "1", "yes")
+
 settings = Settings()

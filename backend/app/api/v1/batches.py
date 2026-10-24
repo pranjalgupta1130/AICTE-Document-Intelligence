@@ -11,6 +11,7 @@ from backend.app.models.user import User
 from backend.app.models.validation import ValidationFinding
 from backend.app.schemas.common import PaginatedList
 from backend.app.schemas.imports import BatchRead, ValidationFindingRead
+from backend.app.schemas.validation import BatchValidationResponse, MatchCandidateRead
 
 router = APIRouter(prefix="/batches", tags=["Batches"])
 
@@ -91,3 +92,49 @@ def get_batch_findings(
 
     items = [ValidationFindingRead.model_validate(f) for f in findings]
     return PaginatedList[ValidationFindingRead](items=items, total=total)
+
+@router.post("/{batch_id}/validate", response_model=BatchValidationResponse, summary="Execute core validation and intake reconciliation engine")
+def validate_batch(
+    batch_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Trigger deterministic validation engine across all student records in the batch.
+    Reconciles records against approved AICTE intake, flags syntax/duplicate issues,
+    updates batch status to VALIDATED or NEEDS_CORRECTION, and records audit event.
+    """
+    from backend.app.services.validation_service import execute_batch_validation
+    return execute_batch_validation(db=db, batch_id=batch_id, current_user=current_user)
+
+@router.get("/{batch_id}/matches", response_model=PaginatedList[MatchCandidateRead], summary="Get cross-institution candidate duplicates detected for batch")
+def get_batch_matches(
+    batch_id: str,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve candidate duplicates flagged across institutions.
+    """
+    from backend.app.models.match import MatchCandidate
+    from backend.app.models.student import StudentRecord
+    from backend.app.schemas.validation import MatchCandidateRead
+
+    batch = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
+    if not batch:
+        raise NotFoundError(f"ImportBatch '{batch_id}' was not found.")
+
+    enforce_institution_scope(current_user, batch.institution_id)
+
+    # Query student record IDs of this batch
+    batch_record_ids = db.query(StudentRecord.id).filter(StudentRecord.batch_id == batch_id).scalar_subquery()
+    query = db.query(MatchCandidate).filter(
+        (MatchCandidate.record_a_id.in_(batch_record_ids)) |
+        (MatchCandidate.record_b_id.in_(batch_record_ids))
+    )
+    total = query.count()
+    matches = query.offset(offset).limit(limit).all()
+    items = [MatchCandidateRead.model_validate(m) for m in matches]
+    return PaginatedList[MatchCandidateRead](items=items, total=total)

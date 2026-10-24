@@ -1,5 +1,5 @@
 from typing import Generator
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
@@ -39,7 +39,7 @@ def get_db() -> Generator[Session, None, None]:
 
 def init_db() -> None:
     """
-    Initialize all database tables.
+    Initialize all database tables and perform non-destructive schema adjustments.
     """
     # Import all models to ensure they are registered with Base.metadata
     from backend.app.models.user import User  # noqa
@@ -52,3 +52,15 @@ def init_db() -> None:
     from backend.app.models.audit import AuditEvent  # noqa
 
     Base.metadata.create_all(bind=engine)
+
+    # Safe non-destructive column check for existing databases
+    with engine.connect() as conn:
+        try:
+            # Check if source_row_number exists in student_records
+            result = conn.execute(text("PRAGMA table_info(student_records);"))
+            existing_cols = [row[1] for row in result.fetchall()]
+            if existing_cols and "source_row_number" not in existing_cols:
+                conn.execute(text("ALTER TABLE student_records ADD COLUMN source_row_number INTEGER;"))
+                conn.commit()
+        except Exception:
+            pass

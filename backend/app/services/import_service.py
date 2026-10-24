@@ -394,7 +394,8 @@ def commit_import_data(
                 seat_type=seat_type,
                 is_nri=is_nri,
                 is_oci=is_oci,
-                is_fn=is_fn
+                is_fn=is_fn,
+                source_row_number=row_num
             )
             student_records.append(student)
 

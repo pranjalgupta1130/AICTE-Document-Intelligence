@@ -10,6 +10,13 @@ from backend.app.schemas.imports import (
     ValidationFindingRead
 )
 
+from backend.app.schemas.validation import (
+    BatchValidationResponse,
+    ValidationSummary,
+    IntakeReconciliationSummary,
+    MatchCandidateRead
+)
+
 __all__ = [
     "LoginRequest",
     "UserRead",
@@ -27,4 +34,8 @@ __all__ = [
     "ImportCommitResponse",
     "BatchRead",
     "ValidationFindingRead",
+    "BatchValidationResponse",
+    "ValidationSummary",
+    "IntakeReconciliationSummary",
+    "MatchCandidateRead",
 ]

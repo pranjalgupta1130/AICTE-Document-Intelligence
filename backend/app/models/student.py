@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import uuid
-from sqlalchemy import Column, String, Boolean, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, String, Boolean, Integer, DateTime, Enum, ForeignKey
 from sqlalchemy.orm import relationship
 
 from backend.app.db.session import Base
@@ -22,6 +22,7 @@ class StudentRecord(Base):
     is_nri = Column(Boolean, default=False, nullable=False)
     is_oci = Column(Boolean, default=False, nullable=False)
     is_fn = Column(Boolean, default=False, nullable=False)
+    source_row_number = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     batch = relationship("ImportBatch", back_populates="student_records")

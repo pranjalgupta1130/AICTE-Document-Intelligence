@@ -82,6 +82,7 @@ Individual student enrollment records.
 | `is_nri` | Boolean | No | Non-Resident Indian flag |
 | `is_oci` | Boolean | No | Overseas Citizen of India flag |
 | `is_fn` | Boolean | No | Foreign National flag |
+| `source_row_number` | Integer | Yes | 1-based source spreadsheet row index for discrepancy lineage |
 | `created_at` | DateTime | No | Timestamp |
 
 ---
