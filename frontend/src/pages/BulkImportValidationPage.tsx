@@ -161,7 +161,7 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
   }, [filterType, diagnosticsList]);
 
   return (
-    <div className="bg-surface-canvas font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
+    <div className="tricolor-slant-bg font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-primary text-on-primary px-space-md py-space-sm rounded-lg shadow-xl font-body-sm text-body-sm flex items-center gap-space-xs animate-bounce border border-secondary/40">
@@ -315,10 +315,10 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
       </header>
 
       {/* MAIN CONTAINER */}
-      <main className="w-full pt-32 bg-surface-canvas min-h-screen pb-16">
+      <main className="w-full pt-32 bg-transparent min-h-screen pb-16">
         <div className="flex flex-col w-full">
           {/* Top Sovereign Utility Banner & Context Anchor */}
-          <div className="w-full bg-surface-card border-b border-border-subtle py-space-xl">
+          <div className="w-full bg-surface-card/85 backdrop-blur-md border-b border-border-subtle py-space-xl">
             <div className="max-w-[1440px] mx-auto px-gutter-md flex flex-col md:flex-row md:items-center justify-between gap-space-lg">
               <div>
                 <div className="flex items-center gap-space-xs mb-space-xs">

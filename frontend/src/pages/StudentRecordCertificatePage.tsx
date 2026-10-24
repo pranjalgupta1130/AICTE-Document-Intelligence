@@ -264,7 +264,7 @@ export const StudentRecordCertificatePage: React.FC<StudentRecordCertificatePage
   };
 
   return (
-    <div className="bg-surface-canvas font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
+    <div className="tricolor-slant-bg font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-primary text-on-primary px-space-md py-space-sm rounded-lg shadow-xl font-body-sm text-body-sm flex items-center gap-space-xs animate-bounce border border-secondary/40">
@@ -418,10 +418,10 @@ export const StudentRecordCertificatePage: React.FC<StudentRecordCertificatePage
       </header>
 
       {/* MAIN CONTENT AREA */}
-      <main className="w-full pt-32 bg-surface-canvas min-h-screen pb-16 flex-1 print:pt-4 print:pb-0 print:bg-white">
+      <main className="w-full pt-32 bg-transparent min-h-screen pb-16 flex-1 print:pt-4 print:pb-0 print:bg-white">
         <div className="flex flex-col w-full">
           {/* Top Sovereign Micro Notification Strip */}
-          <div className="w-full bg-surface-container px-gutter-md py-space-xs text-on-surface flex flex-wrap items-center justify-between gap-space-sm shadow-sm print:hidden">
+          <div className="w-full bg-surface-container/85 backdrop-blur-md px-gutter-md py-space-xs text-on-surface flex flex-wrap items-center justify-between gap-space-sm shadow-sm print:hidden">
             <div className="flex items-center gap-space-xs flex-wrap">
               <span className="material-symbols-outlined text-[18px] text-secondary">
                 verified_user
