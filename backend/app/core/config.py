@@ -1,0 +1,76 @@
+import os
+from typing import List
+from pydantic import BaseModel
+
+INSECURE_DEFAULT_SECRET_KEY = "sih26263-apaar-insecure-dev-secret-replace-in-production-7f8a9b"
+MINIMUM_SECRET_KEY_LENGTH = 32
+
+class Settings(BaseModel):
+    PROJECT_NAME: str = "SIH 26263 APAAR Student Data Platform"
+    VERSION: str = "1.0.0"
+    API_V1_STR: str = "/api/v1"
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").lower()
+
+    # Database
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./apaar_platform.db")
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "10"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "20"))
+    DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+
+    # Security
+    SECRET_KEY: str = os.getenv("SECRET_KEY", INSECURE_DEFAULT_SECRET_KEY)
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))  # 8 hours
+
+    # CORS
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173"
+    ]
+
+    # Synthetic / Demo mode
+    DEMO_MODE: bool = True
+
+    # Ingestion & Parsing Safeguards
+    MAX_CSV_UPLOAD_BYTES: int = int(os.getenv("MAX_CSV_UPLOAD_BYTES", 50 * 1024 * 1024))   # 50 MB
+    MAX_XLSX_UPLOAD_BYTES: int = int(os.getenv("MAX_XLSX_UPLOAD_BYTES", 25 * 1024 * 1024)) # 25 MB
+    MAX_IMPORT_ROWS: int = int(os.getenv("MAX_IMPORT_ROWS", 100000))                        # 100,000 rows
+    MAX_CELL_LENGTH: int = int(os.getenv("MAX_CELL_LENGTH", 10000))                         # 10,000 chars per cell
+    MAX_ZIP_ENTRIES: int = int(os.getenv("MAX_ZIP_ENTRIES", 100))                           # XLSX zip bomb entry limit
+    MAX_UNCOMPRESSED_XLSX_BYTES: int = int(os.getenv("MAX_UNCOMPRESSED_XLSX_BYTES", 100 * 1024 * 1024)) # 100 MB decompressed limit
+
+    # Validation Engine Configuration (Phase 3)
+    APAAR_ID_LENGTH: int = int(os.getenv("APAAR_ID_LENGTH", 12))
+    APAAR_MANDATORY: bool = os.getenv("APAAR_MANDATORY", "false").lower() in ("true", "1", "yes")
+    ENFORCE_VERHOEFF_CHECKSUM: bool = os.getenv("ENFORCE_VERHOEFF_CHECKSUM", "true").lower() in ("true", "1", "yes")
+
+    def validate_security_configuration(self) -> None:
+        """
+        Validate critical security parameters prior to accepting traffic.
+        In production:
+        - SECRET_KEY must be provided explicitly and cannot be empty or None.
+        - SECRET_KEY cannot match the insecure development default.
+        - SECRET_KEY must be at least MINIMUM_SECRET_KEY_LENGTH (32) characters long.
+        Raises RuntimeError with sanitized error message (never disclosing secrets).
+        """
+        if self.ENVIRONMENT == "production":
+            if not self.SECRET_KEY or self.SECRET_KEY.strip() == "":
+                raise RuntimeError(
+                    "CRITICAL SECURITY CONFIGURATION ERROR: SECRET_KEY is not configured. "
+                    "A secure secret key is required in production."
+                )
+            if self.SECRET_KEY == INSECURE_DEFAULT_SECRET_KEY:
+                raise RuntimeError(
+                    "CRITICAL SECURITY CONFIGURATION ERROR: SECRET_KEY is using the insecure "
+                    "development default. A distinct, cryptographically strong secret key is required in production."
+                )
+            if len(self.SECRET_KEY) < MINIMUM_SECRET_KEY_LENGTH:
+                raise RuntimeError(
+                    f"CRITICAL SECURITY CONFIGURATION ERROR: SECRET_KEY does not meet the minimum "
+                    f"strength requirement (must be at least {MINIMUM_SECRET_KEY_LENGTH} characters long)."
+                )
+
+settings = Settings()
+settings.validate_security_configuration()

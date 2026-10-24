@@ -10,3 +10,5 @@ venv/
 *.log
 test_*.pdf
 temp_*.pdf
+*.db
+*.sqlite

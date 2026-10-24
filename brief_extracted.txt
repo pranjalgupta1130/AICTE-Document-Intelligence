@@ -1,0 +1,814 @@
+SIH 2026
+APAAR-Based Student Data
+Management & Verification Platform
+SIH26263  |  AICTE  |  Smart Automation
+Purpose  
+Build-ready implementation brief for Antigravity and a three-member team. Includes problem interpretation, requirements, architecture, stack, data model, APIs, prioritized plan, USPs, testing, security, work allocation and bounded agent instructions.
+Core principle  
+A complete end-to-end working prototype comes first. Build P0 core workflow, then P1 differentiators, then P2 advanced features. Do not spend early days on advanced AI or unavailable government integrations.
+Source boundary  
+The official SIH portal is authoritative. The detailed PS description was cross-checked against a public secondary listing; verify final wording against the official portal before submission. Recommendations are labelled as proposed design, not official wording.
+1. Executive Summary
+SIH26263 asks for an APAAR ID-based student data management and verification platform for AICTE-approved institutions. Institutions need to submit and update student-level records; the platform should validate those records, monitor enrolment, detect duplicates and inconsistencies, support authorized verification, integrate with existing systems, protect data and produce reports.
+The prototype will be a role-aware web platform. Institution staff import CSV/XLSX student records, preview and validate them, correct issues and submit a versioned batch. AICTE reviewers see institution-level monitoring, intake-versus-enrolment exceptions and potential cross-institution duplicate cases. A clearly labelled mock APAAR adapter keeps the demo functional if authorized live API access is unavailable.
+Main differentiator: an explainable student data-quality and reconciliation workflow. Every alert should identify the record/row/field, rule, reason, severity and next action; corrections can be made and checks rerun.
+Definition of success
+A repeatable demo runs from login → import → validate → findings → correction/revalidation → submit/review → dashboard → report export.
+All default demo records are synthetic. Mock verification is visibly marked as simulated.
+Every finding is explainable and traceable to a record/row/field.
+Server-side roles, institution isolation, privacy controls and audit history work.
+The prototype remains useful without live APAAR or AICTE API access.
+2. Problem Statement and Scope
+Item
+Details
+ID
+SIH26263
+Title
+Development of an APAAR ID-Based Student Data Management and Verification Platform for AICTE-Approved Institutions
+Sponsor / theme
+AICTE / Smart Automation
+Core issue
+Student-related data reaches AICTE through different submission mechanisms; completeness, authenticity, reconciliation and verification are difficult to maintain consistently.
+Expected flow
+Institution → student-data upload → APAAR validation → data verification → central repository → analytics/monitoring → authorized verification.
+Problem-derived requirements
+Secure platform/API for approved institutions to upload and update student-level information using APAAR ID as a unique academic identifier.
+Capture approved intake, actual enrolment, supernumerary seats, NRI category, OCI status, FN status and other relevant student information.
+Identify duplicate records, missing/invalid APAAR IDs, enrolment beyond approved intake, inconsistent student data and potential duplicate enrolment across institutions.
+Provide institution and AICTE dashboards for monitoring.
+Support authorized verification, integration with existing institutional/AICTE systems, privacy/security, authentication, role-based access, audit trails, consent mechanisms and reports.
+Support printing/displaying APAAR ID alongside student ID on certificates issued by degree-awarding bodies.
+Scope boundaries
+This is not an APAAR ID generation system; it consumes an ID and checks it through available means.
+Do not claim official/live APAAR, Aadhaar or DigiLocker verification without authorized working integration.
+An anomaly is a review flag, not proof of fraud; no automatic student rejection or record merge.
+Do not assume Aadhaar numbers are required. Minimize personal data and confirm the official data contract.
+Demo data and intake limits must be labelled illustrative unless sourced from an authorized official dataset.
+3. Requirement Traceability
+ID
+Requirement
+Priority
+Prototype evidence
+R1
+Secure upload/update of student-level data keyed by APAAR ID
+P0
+Login, bulk import, edit/correct, batch status
+R2
+Approved intake and actual enrolment
+P0
+Capacity records by institution/course/year; counts derived from student rows
+R3
+Supernumerary seats
+P0
+Structured seat type and separate count
+R4
+NRI, OCI and FN status
+P0
+Fields, validation, filters and reporting
+R5
+Duplicate student records
+P0
+Exact APAAR match and candidate duplicate review
+R6
+Missing/invalid APAAR IDs
+P0
+Presence/syntax rules clearly separated from external verification
+R7
+Admissions exceed approved intake
+P0
+Arithmetic comparison with configured intake and visible rule/policy
+R8
+Student-data inconsistencies
+P0
+Field, status, programme/year and cross-file checks
+R9
+Potential duplicate enrolment across institutions
+P0
+Cross-institution candidate queue; human decision
+R10
+Institution and AICTE dashboards / monitoring
+P0
+API-backed metrics update after import, validation and review
+R11
+Authorized stakeholder verification
+P1
+Permission-limited verification view; third-party role only if time permits
+R12
+Verifiable student records linked to academic identity
+P1
+Platform-generated verification reference, not represented as government credential
+R13
+Integration/API capability
+P0
+Versioned REST API, OpenAPI docs, CSV/XLSX import/export
+R14
+Security, privacy, authentication, RBAC, audit and consent
+P0
+Server-side authorization, audit events, data minimization, authority/consent metadata
+R15
+Policy/accreditation/monitoring reports
+P0
+CSV export and dashboard summaries
+R16
+Display/print APAAR ID alongside student ID on certificates
+P1
+Synthetic certificate preview, permission/policy gated
+R17
+Scalable, secure, interoperable, user-friendly platform
+P0
+Modular design, accessible workflow, documented API and setup
+R18
+Go beyond collection: validation, anomaly detection, real-time monitoring and analytics
+P0/P1
+Explainable validation, exceptions queue, dashboard and trends
+P0 = must work before advanced features. P1 = high-value after the complete core flow works. P2 = advanced/good-to-have. Confirm exact wording with the official SIH portal; official wording overrides this interpretation.
+4. Users and Roles
+Role
+Allowed actions
+Restrictions
+Institution Admin
+Manage own institution profile; upload, validate, submit and correct own records; view own dashboard/reports.
+Cannot view other institutions' identifiable records or change official policy without permission.
+Institution Operator
+Import files, map columns, inspect errors, correct permitted fields and resubmit.
+Cannot manage users/roles or access other institutions.
+AICTE Admin/Reviewer
+View authorized institution summaries; inspect exceptions and cross-institution candidates; record review outcomes; export authorized reports.
+Cannot change source data silently or bypass audit.
+External Verifier (P1)
+Look up one permitted record through a restricted verification view.
+No bulk browsing or unnecessary personal details.
+Demo Admin
+Reset synthetic data and configure demo settings.
+Must not portray mock data or outcomes as official.
+Enforce permissions in backend/API/database queries. Hiding a button in the frontend is not access control.
+5. Functional Requirements
+FR-01 Authentication and authorization
+Login/logout and seeded demo accounts for Institution Admin, Institution Operator and AICTE Admin.
+Use salted password hashes if password auth is implemented; never store plaintext secrets.
+Every API request is checked for role and institution scope.
+FR-02 Institution, programme and intake
+Represent institution, programme/course, academic year and approved intake.
+Store intake by institution + programme + year; model regular and supernumerary categories separately.
+Use seeded illustrative values unless official values are supplied.
+FR-03 Bulk import
+CSV and XLSX are primary prototype inputs; PDF/OCR is not the main route for tabular student records.
+Provide template, upload, column mapping, preview, row count and confirmation.
+Handle blank rows, missing columns, duplicate headers, bad types and malformed files gracefully.
+Keep import batch ID, uploader, timestamp, original filename and row-level outcomes. Never silently drop invalid rows.
+FR-04 Student data fields
+At minimum: APAAR ID, institution student ID, institution, academic year, programme/course, admission/enrolment status, seat type, NRI category, OCI status, FN status and timestamps where needed.
+Approved intake and actual enrolment are institution/course/year facts, not repeated totals in every student row.
+Only include name/DOB/gender or other identity fields if justified by the official data contract and matching purpose.
+Do not add Aadhaar number without explicit official requirement and authorized basis. Use internal record IDs as primary keys.
+FR-05 Validation engine
+Validate required fields, types, allowed values, dates, statuses and references.
+Check APAAR ID presence and syntax using confirmed rules; if unconfirmed, mark as configurable syntactic validation.
+Check duplicates within batch/institution and across institutions.
+Compare enrolled counts with configured intake; handle supernumerary seats through explicit configurable policy.
+Every finding has rule code, severity, reason, record/row/field, actual/expected value if known and next action.
+FR-06 Duplicate matching
+Exact valid APAAR ID match is strongest key.
+If ID is missing/invalid, optionally suggest candidate matches using limited fields; name similarity alone must never merge records.
+Explain matching signals and threshold; allow reviewer to confirm, dismiss or request more evidence.
+Keep records separate until authorized resolution; mask other-institution details from unauthorized users.
+FR-07 APAAR verification adapter
+Create a provider interface so an authorized service can be integrated later.
+Mock adapter outcomes must be clearly named MOCK_VERIFIED, MOCK_NOT_VERIFIED, MOCK_UNAVAILABLE or NEEDS_REVIEW.
+Format validation is not official verification. External service outage must not crash core validation.
+Do not invent endpoints, credentials, provider responses or official API availability.
+FR-08 Submission lifecycle
+Prototype states: Draft → Validated → Submitted → Under Review → Accepted / Needs Correction / Rejected. Label these as prototype workflow states, not official AICTE states.
+Create new batch/version on resubmission; preserve previous history.
+Block submission when configured blocking errors remain; warnings may be allowed per config.
+Show counts of total, valid, warnings, errors, duplicates and intake exceptions.
+FR-09 Dashboards
+Institution view: record counts, valid/invalid rows, missing APAAR IDs, duplicate flags, intake usage, batch status and recent activity.
+AICTE view: institution submission progress, enrolment by course/year, exception counts, possible cross-institution duplicates and recent activity.
+Metrics update from backend data after actions; filters for year, programme, institution, batch, status and severity.
+Use seeded scenarios to demonstrate both healthy and problematic cases.
+FR-10 Review and correction
+Provide exception queue and candidate-duplicate review.
+Authorized reviewer can confirm, dismiss, mark corrected or request information.
+Require reason for dismissing a cross-institution duplicate/high-impact issue.
+Track actor, timestamp, previous/new state and reason. Never auto-reject or accuse based only on algorithmic match.
+FR-11 Verification and certificate display
+Provide a limited-purpose record lookup with minimum necessary fields and audit event.
+Generate a platform verification reference/receipt, clearly not a government-signed credential.
+P1 certificate preview displays institution student ID and APAAR ID with synthetic data and appropriate permissions.
+FR-12 Reports
+Export filtered error/quality reports to CSV; print-friendly aggregate report if time allows.
+Include generation time, institution/year/course filters, record totals and issue counts.
+Aggregate analytics must be separated from personally identifiable exports; permissions apply.
+FR-13 Audit and consent/authority
+Audit imports, validation, submission, corrections, reviews, exports and verification lookups.
+Record actor, action, object, timestamp, outcome and reason; normal users cannot edit audit events.
+Capture consent/authority metadata where required; do not imply a checkbox alone establishes legal consent.
+Mask identifiers in logs and avoid storing raw student payloads in logs.
+FR-14 APIs and interoperability
+Versioned REST API under /api/v1; consistent JSON schemas and errors.
+Expose imports, batches, validation, records, dashboards, reviews, verification and reports.
+OpenAPI/Swagger and docs/API.md with examples; health endpoint; external integrations behind adapters.
+6. Non-Functional Requirements
+ID
+Requirement
+Prototype acceptance
+NFR-01 Security
+Authentication, server-side RBAC, institution isolation, upload validation, safe errors.
+Unauthorized role/cross-institution tests fail closed; no secrets in Git.
+NFR-02 Privacy
+Data minimization, synthetic data by default, masking and redacted logs.
+README forbids real student data in demo fixtures/screenshots.
+NFR-03 Audit
+Trace important user and data actions.
+Import, submit, correction, review, export and verification create audit events.
+NFR-04 Correctness
+Deterministic, explainable rules.
+Same data/rules produce same outcomes; each finding maps to a rule.
+NFR-05 Usability
+Clear import preview, progress, empty/loading/error states and actionable messages.
+A demonstrator completes the workflow without manual database edits.
+NFR-06 Performance
+Responsive demo-sized bulk validation.
+Target 1,000 synthetic rows in a few seconds on demo hardware; measure actual time.
+NFR-07 Reliability
+Bad rows or provider outage do not crash whole batch.
+Partial failures are reported; mock-unavailable is explicit.
+NFR-08 Interoperability
+CSV/XLSX, REST API, documented schema.
+Template and API docs are included.
+NFR-09 Maintainability
+Separate UI, API, rules, persistence and adapters.
+No monolithic single file; rules/config centralized.
+NFR-10 Explainability
+Reason, rule, field/row and next action for every alert.
+Reviewer can explain any visible alert.
+NFR-11 Accessibility
+Labels, contrast, keyboard-operable core forms; color not sole signal.
+Core workflow usable with keyboard and text statuses.
+NFR-12 Reproducibility
+Documented setup and seed/reset flow.
+Fresh-start demo succeeds using README.
+7. Architecture and Technology
+Use a modular monolith for the hackathon: one frontend, one backend API, one relational database and a replaceable APAAR provider adapter. This is easier to finish and demonstrate than microservices.
+Layer
+Responsibility
+Suggested stack
+Frontend
+Login, import wizard, institution dashboard, AICTE dashboard, exception/review queue, record detail, reports.
+React + TypeScript + Vite; Tailwind/current component library.
+Backend/API
+Auth, RBAC, import, batch lifecycle, validation orchestration, review, reports.
+Python 3.11+, FastAPI, Pydantic.
+Domain services
+Validation, duplicate candidate detection, intake reconciliation, quality scoring and explanations.
+Python modules with unit tests; reuse/adapt existing VeriReg patterns.
+Persistence
+Users, institutions, programmes, intake, student records, batches, findings, matches, audit.
+PostgreSQL + SQLAlchemy/SQLModel + migrations preferred; SQLite acceptable for a short local prototype if already present.
+Import staging
+CSV/XLSX parsing, temporary files and row errors.
+Python csv/pandas; openpyxl for XLSX.
+External adapter
+APAAR provider boundary and mock provider.
+Interface + MockApaARAdapter; real adapter only with authorized API details.
+Testing/docs
+Unit/API/integration tests, OpenAPI, README, demo script.
+pytest; existing frontend test setup; docs/API.md.
+Suggested repository layout
+frontend/src/pages/             # Login, dashboards, import, review, reports
+frontend/src/components/        # Tables, status chips, preview, charts
+frontend/src/services/api.ts    # Typed API client
+backend/app/main.py
+backend/app/api/v1/             # auth, institutions, imports, students, batches, review, reports
+backend/app/core/               # settings, security, permissions
+backend/app/models/             # database models
+backend/app/schemas/            # request/response contracts
+backend/app/services/           # import, validation, matching, intake, audit
+backend/app/adapters/           # APAAR interface and mock
+backend/app/seed/               # synthetic data
+backend/tests/
+docs/API.md
+docs/DATA_DICTIONARY.md
+docs/DEMO_SCRIPT.md
+Stack discipline  
+Do not add an LLM, vector database, blockchain, Kafka, microservices or a separate AI model without a concrete requirement and measurable benefit. Deterministic validation is the core intelligence.
+8. Data Model and Rule Catalog
+Entity
+Key fields (illustrative)
+Notes
+Institution
+id, name, authorized code if supplied, status
+Never invent official identifiers.
+Programme
+id, institution_id, programme/course, academic_year
+Scope for intake/enrolment.
+ApprovedIntake
+institution_id, programme_id, year, regular_intake, supernumerary policy/limit
+Use configured/seeded illustrative values unless official data supplied.
+StudentRecord
+internal id, institution_student_id, APAAR ID, institution, year, programme, admission status, seat type, NRI/OCI/FN status
+Minimize personal fields; protect identifiers.
+ImportBatch
+id, institution, uploader, source filename, timestamp, version, status, counts
+Maintain source lineage.
+ValidationFinding
+id, batch, record, rule code, severity, field, message, expected/actual summary, status
+Explainable and traceable.
+MatchCandidate
+record A/B, matching signals, category/confidence, review status
+Candidate until human review.
+VerificationAttempt
+record, provider, outcome, timestamp, reference
+Mock results visibly marked MOCK.
+AuditEvent
+actor, institution, action, object, timestamp, outcome, reason
+Append-only from UI.
+Authority/Consent record
+reference, purpose, basis, timestamp, expiry/revocation if applicable
+Only if justified by policy/workflow.
+Rule family
+Checks
+Guidance
+Required fields
+Missing APAAR ID, institution student ID, academic year, programme.
+Blocking where required.
+APAAR syntax/status
+Missing, format failure, duplicate, external check pending/unavailable.
+Syntax failure ≠ official verification failure.
+Duplicates
+Same ID within batch/institution/across institutions.
+Exact collision is high priority; candidate match needs review.
+Intake
+Enrolled count above configured allowed intake.
+Show actual, allowed, difference and policy reference.
+Seat categories
+Invalid NRI/OCI/FN value, inconsistent seat type, supernumerary policy breach.
+Use explicit configurable policy.
+Consistency
+Same ID with conflicting programme/year/status; repeated institution student ID where prohibited.
+Flag, do not silently overwrite.
+Lifecycle
+Withdrawn/inactive records counted as active; repeated batch/version.
+Configurable warning/error.
+Each rule needs a stable code, plain-language explanation, severity, scope, configurable enablement and tests. If official policy is unclear, label it a prototype/configurable rule.
+9. Minimum API Contract
+Method + route (suggested)
+Purpose / required behavior
+POST /api/v1/auth/login
+Authenticate and return session/token plus role.
+GET /api/v1/me
+Return current user and permitted institution scope.
+GET /api/v1/institutions
+List only institutions allowed for caller.
+GET /api/v1/intake
+Read intake by institution/programme/year.
+POST /api/v1/imports/preview
+Parse CSV/XLSX and return mapped columns, sample rows and errors.
+POST /api/v1/imports
+Persist batch and row-level import results.
+POST /api/v1/batches/{id}/validate
+Run checks and persist findings/counts.
+GET /api/v1/batches/{id}
+Return status, counts, timestamps and version.
+GET /api/v1/batches/{id}/findings
+Return paginated, permission-scoped findings.
+POST /api/v1/batches/{id}/submit
+Apply blocking rules and create audit event.
+GET /api/v1/dashboard/institution
+Return persisted institution metrics.
+GET /api/v1/dashboard/aicte
+Return authorized aggregate monitoring metrics.
+POST /api/v1/reviews/{finding_id}
+Record review decision/reason and audit.
+GET /api/v1/verification/{student_ref}
+Limited-purpose, audited view; mock label if applicable.
+GET /api/v1/reports/export
+Return permission-scoped CSV and audit export.
+GET /health
+Service health without secrets.
+Use ISO timestamps, stable IDs, explicit enums, pagination and a consistent error shape (code/message/details/request_id).
+Do not expose stack traces or sensitive payloads in errors.
+Frontend-visible metrics must be returned by API or labelled seeded demo values.
+10. UX Pages Required
+Page
+Minimum behavior
+Login
+Role-aware demo login and logout.
+Institution dashboard
+Record counts, validity, missing IDs, duplicate flags, intake usage, batch status and activity.
+Import wizard
+Template download, upload, column mapping, preview, confirmation and structural errors.
+Batch detail
+Status, counts, findings, validate/revalidate and export errors.
+Record detail
+Masked identifiers, academic fields, findings, source batch and audit.
+Review queue
+Filter by institution/year/programme/status/severity; inspect and resolve matches.
+AICTE dashboard
+Submission progress, enrolment/intake, exceptions and candidate duplicates.
+Reports
+Filters, CSV export and printable aggregate view.
+Verification view
+Minimum necessary fields, status, issuer, timestamp/reference and mock label.
+Certificate preview (P1)
+Institution student ID + APAAR ID, synthetic record and clear prototype status.
+UI truth rule  
+Every visible control must work. No dead buttons or fake charts. Seeded values are acceptable for the demo only when labelled and returned consistently through the backend.
+11. USPs / Differentiators
+USP
+Description
+Priority
+1. Explainable Student Data Quality & Reconciliation Engine
+Every flag links to row/field, rule, reason, severity and next action; corrections can be rerun.
+P0 core
+2. Cross-Institution Duplicate Triage
+Exact ID collision plus cautious candidate matching; masked details and human decision, no auto-merge.
+P0 core
+3. Intake-to-Enrolment Reconciliation
+Connects student-level rows with approved intake and seat-category policy; displays arithmetic.
+P0 core
+4. Correction loop + transparent quality score
+Completeness, validity, consistency and duplication components; before/after score.
+P1
+5. Provider adapter + verification receipt
+Replaceable APAAR integration boundary; platform receipt clearly distinguished from government credential.
+P1
+6. Privacy-aware verification
+Purpose-limited view, masked identifiers, audit on lookup/export.
+P0 security / P1 UX
+7. Certificate APAAR/student-ID preview
+Visible demonstration of the named certificate display requirement.
+P1
+8. Longitudinal trends
+Compare data quality and enrolment across batches/years.
+P2
+How to implement a defensible quality score
+If time permits, score completeness, validity, consistency and duplication with transparent weighted rules. Show component counts and formula. Call it a dataset quality score, not a ranking of institutions. A high aggregate must not hide severe individual errors.
+AI/ML guidance
+Do not add an LLM just to claim AI. Exact identifiers and deterministic rules are more reliable for many checks. A matching algorithm may only suggest candidates for human review, must explain its signals and must be tested on labelled synthetic cases. Never auto-merge or auto-reject based on a score.
+12. Build Priorities — Strict Order
+P0 — Core end-to-end prototype
+Institution/programme/year/intake seed data.
+Login and role/institution access control.
+CSV/XLSX template, upload, preview, column mapping and persistence.
+Student records and import batch lineage.
+Required-field, APAAR presence/syntax, exact duplicate, category/status and intake checks.
+Row-level findings with rule, reason, severity and correction guidance.
+Institution and AICTE dashboards driven by API data.
+Correction/re-import/revalidation and submission/review lifecycle.
+Audit trail for import, validate, submit, correction, review and export.
+CSV error/quality report export.
+Clearly labelled mock APAAR adapter; provider failure does not stop core validation.
+Critical unit/API/integration/security tests and complete README/demo script.
+P1 — High-value differentiators after P0 passes
+Cross-institution duplicate review queue and outcomes.
+Transparent data-quality score with before/after improvement.
+Limited verification view/reference and certificate preview.
+Polished filters, print report, loading/error/empty states.
+OpenAPI examples and one-command seed/reset.
+P2 — Advanced / good-to-have
+Longitudinal analytics and trend charts.
+Advanced candidate matching configuration and explanation panel.
+Additional institutional import formats.
+Optional QR code to a permission-controlled verification page, only if safe and practical.
+Container deployment/load checks.
+Live authorized APAAR/AICTE integration only if documented API access, permission and credentials exist.
+Hard stop  
+Do not start P1 until the P0 happy path and critical error path work. Do not start P2 while P0 defects remain. A smaller reliable end-to-end prototype is better than disconnected advanced features.
+13. Three-Member Work Split
+Member
+Primary ownership
+Deliverables
+Coordination
+Member 1 — Backend & Data Platform
+Core backend and business logic: database, authentication/RBAC, institution/programme/intake data, import and persistence, baseline student validation, deterministic duplicate checks, workflow APIs and audit logging.
+Schema/migrations; authentication and permissions; import preview/persistence endpoints; student and batch APIs; baseline APAAR presence/syntax checks; required-field and intake checks; exact-duplicate detection; review/status APIs; audit events; API documentation, health check and backend tests.
+Work continuously with Member 2 on API contracts, payloads, errors and integration. Coordinate shared data structures with Member 3 before advanced features are implemented.
+Member 2 — Frontend & Product Integration
+Complete user-facing application and integration: React UI, role-specific navigation, import and review experiences, dashboards, reporting and end-to-end behavior.
+Login and role-aware screens; institution/student/intake management; CSV/XLSX import wizard and preview; validation findings and explanations; correction/revalidation and review workflows; status tracking; API-backed dashboards; audit history and report/export UI; loading, empty and error states; responsive layout; end-to-end tests.
+Work continuously with Member 1; use agreed API contracts and mocked responses while endpoints are in progress. Review backend behavior through the UI and report integration issues early. Coordinate finding display and advanced-feature interfaces with Member 3.
+Member 3 — Data Quality Intelligence, Testing & Differentiators
+Advanced data-quality capabilities and independent quality assurance, building on the stable core validation and API interfaces.
+Comprehensive risk-based test catalogue and synthetic edge-case datasets; advanced duplicate candidate matching with explainable reasons; transparent data-quality scoring; anomaly and data-quality analytics; expanded validation-rule coverage; security, data-integrity and regression audits; test reports and prioritized improvement recommendations; optional P1 differentiators after core requirements are covered.
+Agree data fields, validation finding structure and API/interface requirements with Members 1 and 2 early. Deliver enhancements against those contracts, review integration behavior with the team and verify that added capabilities preserve core workflows.
+Shared rules
+Freeze data model/enums/API contract at project kickoff; use shared types.
+One person coordinates merges/releases; commit small feature branches and integrate at least twice daily where possible.
+Member 3 tests the integrated application, not just unit functions; Member 1 tests permissions; Member 2 verifies every visible control.
+All three members must be able to run the app and complete the core demo before final day.
+Keep `sih-26263-apaar` separate from the existing SIH26261 branch; do not delete working code blindly.
+Every implementation phase must follow the same gated engineering cycle. Code generation alone is not evidence that a feature works.
+Mandatory Development → Testing → Audit → Improvement → Verification Cycle
+Plan and define acceptance criteria: 
+state the objective, requirements, files/modules, risks, test plan and explicit exit gate.
+Develop the smallest vertical slice: 
+implement only the current scope and preserve working behavior.
+Test: 
+run unit, API, integration and relevant UI/end-to-end tests; include positive, negative and boundary cases.
+Generate an initial audit report: 
+list files changed, requirements covered, tests run/results, failures, gaps, security/privacy risks and limitations.
+Analyze and prioritize improvements: 
+find root causes and rank defects by severity and impact; do not broaden scope.
+Implement improvements: 
+fix confirmed defects and add regression tests.
+Verify again: 
+rerun failed tests, regression tests and the full relevant suite; check previous features remain working.
+Generate a final verification audit: 
+map each acceptance criterion to evidence and mark PASS, FAIL, BLOCKED or NOT TESTED; list residual risks.
+Gate the next phase: 
+proceed only when all critical criteria/tests pass. Otherwise repeat improvement, testing and verification, or report a genuine blocker.
+A phase is complete only after implementation, testing, audit, improvement, retesting and final verification are evidenced.
+14. Implementation Plan — Phase-Gated, Not Calendar-Based
+Implementation phase
+Work
+Exit gate / required evidence
+Phase 0 — Scope & repository audit
+Verify official PS wording; inspect repository, dependencies, tests and Git status; create `sih-26263-apaar` branch; agree shared data/API contract; run baseline tests.
+Audit report lists reusable/modify/defer files, requirements, assumptions, baseline results, risks and blockers. No broad edits before this report.
+Phase 1 — Skeleton, data model & access
+Implement app startup, configuration, institution/programme/year/intake schema, synthetic seed data, login and server-side RBAC/institution scoping.
+Fresh start succeeds; role and institution-isolation tests pass; schema/API contract documented.
+Phase 2 — Import & persistence
+Implement CSV/XLSX template, preview, column mapping, batch creation, row persistence, row-level parse errors and import lineage.
+A user uploads synthetic data and sees persisted batch/row counts; malformed files fail safely.
+Phase 3 — Core validation & reconciliation
+Implement required-field, APAAR presence/syntax, exact duplicate, category/status, consistency and intake rules with row/field evidence.
+Clean and defective seed cases produce expected results. Mandatory go/no-go: upload → validate → finding works correctly.
+Phase 4 — Review workflow & dashboards
+Implement findings, correction/reimport/revalidation, submission lifecycle, reviewer decisions, audit events and API-backed dashboards.
+End-to-end flow works through UI/API without manual database edits; review actions persist with audit history.
+Phase 5 — Integration & P1 differentiators
+Add cross-institution candidate review, labelled mock APAAR adapter, report export, transparent quality score and limited verification/certificate preview only after P0 passes.
+Mock is clearly labelled; candidate matches are never auto-merged; selected P1 features pass tests.
+Phase 6 — Hardening & release readiness
+Run full unit/API/integration/security/privacy/error-path tests; fix verified defects; repeat tests; prepare setup, seed/reset and demo documentation.
+All critical gates pass; fresh setup and repeatable demo work. Freeze new features when release candidate is stable.
+Move to the next phase only when the current phase's exit criteria pass. If upload → validation → finding → dashboard fails, stop advanced work, fix the blocker, and repeat testing and verification. These phases define dependencies, not fixed dates.
+15. Synthetic Demo Dataset
+Scenario
+Seeded condition
+Expected behavior
+Clean batch
+Unique synthetic IDs, complete fields, within intake.
+Valid summary; no false blocking errors.
+Missing APAAR ID
+Blank ID in one row.
+Blocking finding with row/field and fix guidance.
+Malformed ID
+Synthetic value fails configured syntax.
+Format error; not described as official lookup result.
+Within-batch duplicate
+Same APAAR ID in two rows.
+Both rows linked; no automatic merge.
+Cross-institution candidate
+Same synthetic ID in two institution datasets.
+AICTE sees masked candidate and can confirm/dismiss with reason.
+Intake exceeded
+Enrolled count greater than configured allowed intake.
+Show actual, allowed, difference and rule/policy.
+Category/status conflict
+Invalid NRI/OCI/FN or seat-type combination under demo rules.
+Rule-specific warning/error.
+Provider unavailable
+Mock adapter returns unavailable.
+Visible MOCK_UNAVAILABLE/pending; batch validation still completes.
+Correction loop
+Fix a row and revalidate.
+Finding count changes and history is retained.
+Unauthorized access
+Institution A requests Institution B record.
+Backend denies; test passes.
+Use fictional names, IDs and institutions; label the dataset synthetic.
+Do not use real APAAR IDs, Aadhaar numbers, phone numbers or student files in screenshots or demo.
+Use illustrative intake values with explicit label; do not imply official AICTE data.
+16. Testing and Definition of Done
+16.1 Risk-Based Test Coverage and Test Case Management
+Coverage area
+Required scenarios
+Requirements traceability
+Every PS requirement, functional/non-functional requirement, API endpoint, role/permission, USP and acceptance criterion maps to test cases.
+Validation and data quality
+Missing/invalid fields, malformed IDs, allowed values, normalization, repeated rows, conflicting records, clean records and false-positive scenarios.
+Boundary and arithmetic
+Zero/one/many records, exact intake limit, one over limit, supernumerary policy, empty batch and large batch.
+Import robustness
+CSV/XLSX valid/invalid files, missing/extra columns, duplicate headers, blank rows, invalid encoding/types, oversized files, formula-like cells and partial row failures.
+Duplicate matching
+Same ID in one batch/institution/across institutions, missing IDs, similar names with different IDs, threshold edges, confirm/dismiss and no auto-merge.
+API and contract
+Invalid/missing fields, invalid enums, malformed requests, status codes, pagination, authorization and consistent error format.
+Security and privacy
+Unauthenticated calls, role escalation, institution A reading institution B, guessed IDs, unauthorized export, sensitive logs, committed secrets and unsafe uploads.
+Audit integrity
+Import, validation, correction, submit, review, export and lookup create correct events; actor/time/object/outcome/reason present; normal users cannot alter audit records.
+Workflow and persistence
+Draft/validated/submitted/review/correction states, refresh/re-login persistence, repeated submission, retries and stale edits where relevant.
+External adapter and resilience
+Mock outcomes clearly labelled; timeout/unavailable/malformed provider response; core checks continue without provider.
+Frontend and end-to-end
+Every visible control works; loading/empty/success/error states; dashboard matches API; filters and full core workflow.
+Reporting
+Export filters, counts, encoding, masking, permissions and audit event.
+Regression and performance
+Full suite after fixes; measure demo-sized batch performance and record actual timing; no unsupported performance claims.
+For each test case record: Test ID, linked requirement/risk, preconditions, input/fixture, steps, expected result, actual result, PASS/FAIL/BLOCKED/NOT TESTED, evidence/log, defect reference and retest status. Maintain a risk register with likelihood, impact, severity, mitigation, owner and residual risk. Never claim full coverage without a traceability review.
+Must-pass tests
+Unit tests for each rule and enum.
+CSV/XLSX tests: valid, malformed, missing columns, blank rows, mixed valid/invalid rows.
+Duplicate tests: exact duplicate IDs, missing IDs and candidate matches that must not auto-merge.
+Intake tests: below limit, exactly at limit, over limit and configured supernumerary treatment.
+API tests for authentication, roles, institution isolation and validation response schema.
+Audit tests for import, submit, correction, review, export and verification.
+End-to-end: login → upload → validate → finding → correction/reimport → revalidate → submit → dashboard update → export.
+Provider unavailable test: batch continues and does not claim verification.
+Fresh-start test: reset seed and reproduce demo without manual SQL.
+Gate
+Pass condition
+Functional
+Core workflow completes through UI and backend.
+Correctness
+Known seeded errors found; clean records not falsely flagged by same rule; counts match data.
+Explainability
+Every finding has rule code, reason, severity and row/field/record reference.
+Security
+Cross-role and cross-institution access attempts rejected by backend tests.
+Persistence
+Refresh/re-login does not lose records, findings or audit events.
+Integration
+Dashboard metrics come from API/database; no dead visible controls.
+Resilience
+Malformed row and provider failure are handled.
+Documentation
+Setup, seed/reset, demo accounts, API, limitations and demo script are current.
+17. Security, Privacy and Responsible Use
+Treat student identifiers and academic records as sensitive; use synthetic records by default.
+Collect only fields justified by the official data contract. Do not add Aadhaar number just because it is associated with the broader APAAR ecosystem.
+Mask identifiers in lists/logs and restrict full values to authorized use.
+Enforce server-side RBAC and institution scope on every route/query.
+Use HTTPS in deployed environments; secrets in environment variables, never Git.
+Validate upload types/sizes and handle malformed files safely; use parameterized queries/ORM.
+Do not log raw student records; audit sensitive lookups and exports.
+Restrict cross-institution matching details to authorized reviewers.
+Consent/authority UI must reflect the actual workflow; a checkbox alone is not a guarantee of legal compliance.
+Never auto-reject a student or auto-merge records based solely on a matching score.
+This is an engineering brief, not legal advice. Production deployment requires confirmation of applicable Indian data-protection obligations, official APAAR terms, authorized data sharing, retention and access policies.
+18. Reusing Existing VeriReg AI Code
+Existing component
+Decision
+Action
+verireg/extractor.py
+Reuse selectively
+Keep PDF/OCR for supporting docs; add CSV/XLSX as primary student-data ingestion.
+verireg/field_extraction.py
+Modify substantially
+Replace college-approval fields with import mapping; regex PDF extraction is not the main student-table path.
+verireg/rules_engine.py
+Reuse engine pattern
+Replace land/FDR/fire-NOC rules with student validation rule catalog.
+verireg/consistency.py
+Reuse concepts; rewrite domain
+Compare student IDs, APAAR IDs, programme/year/status and intake totals.
+verireg/duplicate_detector.py
+Reuse utilities; add record matching
+Keep file/image matching only if useful; implement exact ID and candidate record matching.
+verireg/signatures.py
+Defer
+Not core unless certificate-signing requirement is clarified.
+verireg/risk_scoring.py
+Modify
+Use transparent data-quality/exception priority score, not approval risk tiers.
+verireg/pipeline.py
+Refactor incrementally
+Build import → validate → reconcile → submit orchestration.
+verireg/api.py
+Modify/add versioned routes
+Student data API; preserve legacy code on old branch.
+verireg/synthetic_docs.py
+Add/modify seed generator
+Create synthetic CSV/XLSX student batches and edge cases.
+tests/test_member1.py
+Retain useful tests; add suite
+Keep legacy tests; add student-data unit/API/integration tests.
+sample_pipeline_output.json
+Legacy only
+Create sample student validation output.
+Git safety  
+Create branch `sih-26263-apaar`. Before editing, inspect tree, dependencies, routes, tests and Git status. Keep the current SIH26261 implementation recoverable; make incremental changes.
+19. Antigravity Instructions — Paste as the Agent's Project Contract
+PROJECT: SIH26263 — APAAR-Based Student Data Management and Verification Platform for AICTE-approved institutions.
+SOURCE OF TRUTH AND FIRST ACTIONS:
+1. Read this entire brief. Verify exact PS wording against https://sih.gov.in/sih2026PS if available; official wording overrides this brief.
+2. Inspect repository, README, dependencies, routes, database, tests and Git status. Create/confirm branch `sih-26263-apaar`; do not modify main without approval.
+3. Run baseline tests and produce an initial audit report: architecture, file-by-file reuse/modify/defer plan, requirements, assumptions, test results, risks and blockers.
+4. Freeze shared schemas, enums, API routes, error format and example payloads with all three members before parallel implementation.
+MANDATORY DEVELOPMENT CYCLE — FOLLOW FOR EVERY PHASE:
+A. PLAN: State objective, requirements, files, acceptance criteria, risks, test plan and stop condition.
+B. DEVELOP: Implement only the current phase/feature; reuse working code and avoid unrelated refactors.
+C. TEST: Run unit tests for changed logic plus relevant API/integration/UI/end-to-end tests.
+D. INITIAL AUDIT REPORT: Record requirements covered, files changed, behavior added, commands/tests and actual results, failures, gaps, security/privacy risks, limitations and unresolved defects.
+E. IMPROVEMENT ANALYSIS: Find root causes; rank defects by severity and impact. Do not patch symptoms blindly.
+F. IMPLEMENT IMPROVEMENTS: Fix confirmed defects and add regression tests within current scope.
+G. VERIFY: Rerun failed tests, regression tests and the full relevant suite; verify fixes did not break earlier behavior.
+H. FINAL VERIFICATION AUDIT: Map every acceptance criterion to evidence; mark PASS, FAIL, BLOCKED or NOT TESTED; list residual risks and remaining gaps.
+I. GATE DECISION: Proceed only if all critical acceptance criteria/tests pass. Otherwise repeat improvement/testing/audit. For genuine external blockers, use a clearly labelled mock/adapter where appropriate and document the limitation.
+IMPLEMENTATION PHASES — NO FIXED CALENDAR:
+Phase 0: repository/official-PS audit, branch, baseline tests and shared API/data contract.
+Phase 1: app skeleton, database/schema, institution/programme/year/intake, synthetic seeds, login and RBAC.
+Phase 2: CSV/XLSX preview, mapping, import, persisted batches/records and row-level errors.
+Phase 3: required fields, APAAR presence/syntax, exact duplicates, category/status consistency, intake reconciliation and explainable findings.
+Phase 4: correction/revalidation/submission/review, API-backed dashboards and audit history.
+Phase 5: cross-institution candidate review, labelled mock APAAR adapter, CSV export and selected P1 quality score/verification/certificate UI.
+Phase 6: full regression/security/privacy/error-path testing, documentation, reproducible setup and demo rehearsal.
+P2 only after P0/P1 are stable. Each phase has an exit gate; calendar time does not override failing tests.
+TESTING AND RISK COVERAGE:
+- Maintain a requirements-to-test traceability matrix: every PS requirement, functional/non-functional requirement, endpoint, role/permission, USP and acceptance criterion maps to one or more tests.
+- Cover happy paths, invalid inputs, boundaries, empty states, duplicates, conflicting records, malformed/large files, partial batch failures, adapter outage, persistence/reload, authorization failures, cross-institution data leakage, audit integrity, export permissions, UI loading/error states and regressions.
+- Include unit, API/contract, integration, end-to-end, security/authorization, privacy/logging, resilience and basic performance tests as applicable.
+- Test negative/adversarial cases, not just the demo happy path. Use synthetic data only.
+- For each case record ID, requirement/risk, setup, input, steps, expected/actual result, status, evidence/log, defect link and retest status.
+- Maintain a risk register with likelihood, impact, severity, mitigation, owner and residual risk.
+- Never claim tests passed unless commands ran and results were observed. Separate PASS, FAIL, BLOCKED and NOT TESTED.
+NON-NEGOTIABLE:
+- Never claim mock APAAR checks are official/live. Never invent APIs, credentials, official formats/rules or government responses.
+- Synthetic data only by default; no real APAAR/Aadhaar/student data in fixtures, logs, screenshots or commits.
+- Do not store Aadhaar numbers without explicit official requirement and authorized basis.
+- Exact ID matches may create findings; fuzzy matches are candidates only. Never auto-merge or auto-reject.
+- Every finding includes rule code, reason, severity, record/row/field and suggested action.
+- Visible controls must work; metrics come from backend or are labelled seeded.
+- Server-side role/institution authorization is mandatory.
+- Avoid unnecessary frameworks, LLMs, blockchain, microservices and broad refactors. Keep legacy SIH26261 branch recoverable.
+- Do not start a later phase while current critical criteria/tests fail.
+REPORT AFTER EVERY ITERATION:
+1. Phase/feature and acceptance criteria.
+2. Files changed and summary.
+3. Commands/tests executed and actual results.
+4. Audit findings and risk assessment.
+5. Defects fixed and regression evidence.
+6. Remaining failures, untested items and blockers.
+7. Gate status: PASS / FAIL / BLOCKED.
+8. Next smallest action, only when the gate permits it.
+SUCCESS CONDITION:
+A fresh user can log in, upload synthetic CSV/XLSX, preview/import, validate a seeded missing/duplicate APAAR or intake issue, inspect the explanation, correct/reimport, submit, see dashboard counts update, resolve a review item with audit history, export a report and observe external verification labelled MOCK. No manual database edits are needed.
+20. 5–7 Minute Demo Script
+Log in as institution operator and show the institution dashboard.
+Upload the synthetic batch with a missing APAAR ID, duplicate ID and intake exception; preview and confirm import.
+Run validation and open a finding showing row/field, rule code, explanation and correction.
+Show intake arithmetic and configured policy.
+Open AICTE dashboard and show aggregate institution metrics plus a masked cross-institution candidate.
+Resolve one candidate with a reason and show the audit event.
+Correct a test row, reimport/revalidate and show findings/quality score change.
+Show APAAR result labelled MOCK, then export CSV report.
+State clearly that live official verification requires authorized API access.
+Pitch emphasis
+We go beyond data collection: validate, reconcile, explain and support correction.
+Every flag is traceable and reviewable; no blind merges or accusations.
+Privacy and role isolation are in the workflow, not only in slides.
+Show working upload-to-report path before discussing advanced ideas.
+21. Risks and Mitigations
+Risk
+Mitigation
+No authorized APAAR API
+Adapter + visibly labelled mock; core checks continue.
+Official ID format/policy unclear
+Verify official docs; configurable rules; don't claim authoritative validation.
+Seat category/intake policy differs
+Model per institution/programme/year and configurable policy; label demo assumptions.
+False duplicate matches
+Exact ID first; candidate matches explained and human-reviewed.
+Privacy issue
+Synthetic data, masking, role isolation, redacted logs.
+Team integration mismatch
+Shared contract Day 1; shared types; daily merges; Day 3 end-to-end gate.
+Overbuilding AI
+P0 gates; no P1/P2 while core path fails.
+Legacy code too domain-specific
+Reuse patterns/infrastructure and preserve old branch; replace rules/schema incrementally.
+Hardcoded demo values misrepresented
+Label seeded intake and mock verification; distinguish demo from official data.
+22. Final Checklist
+☐ Official PS wording verified; traceability table updated.
+☐ Branch `sih-26263-apaar` exists; old implementation remains recoverable.
+☐ CSV/XLSX template and synthetic seed/reset script available.
+☐ Login, role checks and institution isolation tested.
+☐ Import preview, mapping, persistence and row-level errors work.
+☐ APAAR syntax and external verification are clearly distinguished.
+☐ Duplicate detection works without automatic merge.
+☐ Intake/seat-category reconciliation shows arithmetic and configured policy.
+☐ Findings contain rule, severity, reason and row/field reference.
+☐ Correction/revalidation and versioned lifecycle work.
+☐ Dashboards use persisted API data.
+☐ Review actions and audit history persist.
+☐ CSV export works and respects permissions.
+☐ Mock adapter failure is handled and labelled.
+☐ Critical unit/API/integration/security tests pass.
+☐ Fresh-start demo works without manual database edits.
+☐ 5–7 minute demo can be repeated; limitations are documented.
+23. Sources and Evidence Boundaries
+Official SIH problem statement directory: https://sih.gov.in/sih2026PS
+Secondary detailed SIH26263 listing used during preparation: https://zaidsayyed.in/tools/sih-problem-statements/sih26263
+Official APAAR FAQ: https://apaar.education.gov.in/faqs
+Source-derived requirements include the PS title/context, named intake/enrolment/seat-category fields, duplicate and APAAR checks, intake exceedance, cross-institution duplicates, dashboards, authorized verification, integration, security/privacy/RBAC/audit/consent, reporting and certificate display. The tech stack, architecture, API paths, priorities, scoring, demo workflow, testing plan and three-member allocation are proposed engineering choices.
+Final instruction  
+Before final SIH submission, compare this brief against the exact official PS PDF/portal text provided by the college. If there is a conflict, official requirements take precedence and this document must be updated.
