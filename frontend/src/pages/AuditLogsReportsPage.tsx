@@ -289,7 +289,7 @@ export const AuditLogsReportsPage: React.FC<AuditLogsReportsPageProps> = ({
     }`;
 
   return (
-    <div className="bg-surface-canvas font-body-md text-on-surface antialiased min-h-screen flex flex-col">
+    <div className="tricolor-slant-bg font-body-md text-on-surface antialiased min-h-screen flex flex-col">
       {/* Toast Notification */}
       {statusMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-primary text-on-primary px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-border-strong animate-bounce">
@@ -443,15 +443,8 @@ export const AuditLogsReportsPage: React.FC<AuditLogsReportsPageProps> = ({
       </header>
 
       {/* MAIN CONTAINER */}
-      <main className="w-full pt-32 bg-surface-canvas min-h-screen flex-1">
+      <main className="w-full pt-32 bg-transparent min-h-screen flex-1">
         <div className="flex flex-col w-full relative">
-          {/* Ambient Indian Tricolor Background Layer */}
-          <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-            <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[#FF9933]/10 blur-3xl transform -rotate-12"></div>
-            <div className="absolute top-1/3 left-1/4 w-[800px] h-[400px] bg-surface-canvas/90 blur-2xl transform rotate-45"></div>
-            <div className="absolute -bottom-40 -right-40 w-[650px] h-[650px] rounded-full bg-[#138808]/10 blur-3xl transform rotate-12"></div>
-            <div className="absolute inset-0 bg-gradient-to-br from-[#FF9933]/[0.04] via-transparent to-[#138808]/[0.05]"></div>
-          </div>
 
           <div className="w-full max-w-[1440px] mx-auto px-gutter-md py-space-xl flex flex-col gap-space-xl">
             {/* Top Statutory Header & Context Bar */}

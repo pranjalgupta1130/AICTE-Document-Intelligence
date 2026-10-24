@@ -286,7 +286,7 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
   };
 
   return (
-    <div className="bg-surface-canvas font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
+    <div className="tricolor-slant-bg font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-24 right-8 bg-primary text-on-primary px-space-md py-space-sm rounded-lg shadow-xl flex items-center gap-space-sm z-50 border border-secondary/40 animate-bounce">
@@ -445,10 +445,10 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
       </header>
 
       {/* MAIN CONTAINER */}
-      <main className="w-full pt-32 bg-surface-canvas min-h-screen pb-24">
+      <main className="w-full pt-32 bg-transparent min-h-screen pb-24">
         <div className="flex flex-col w-full">
           {/* Top Sovereign Utility Sub-bar */}
-          <section className="w-full bg-surface-card px-gutter-md py-space-sm shadow-sm flex flex-wrap items-center justify-between gap-space-md border-b border-border-subtle">
+          <section className="w-full bg-transparent px-gutter-md py-space-sm flex flex-wrap items-center justify-between gap-space-md border-b border-border-subtle/60 backdrop-blur-[2px]">
             <div className="flex items-center gap-space-sm flex-wrap">
               <div className="flex items-center gap-space-xs text-primary font-headline-sm text-headline-sm">
                 <span className="material-symbols-outlined text-secondary">fact_check</span>

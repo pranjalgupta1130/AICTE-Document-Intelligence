@@ -460,7 +460,7 @@ export const AicteCentralReviewPage: React.FC<AicteCentralReviewPageProps> = ({
     : currentCase.apaarId.slice(0, 5) + '••••-' + currentCase.apaarId.slice(-4);
 
   return (
-    <div className="bg-surface-canvas font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
+    <div className="tricolor-slant-bg font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
       {/* Toast Notification Banner */}
       {notificationMsg && (
         <div className="fixed bottom-6 right-6 z-50 max-w-md bg-navy-deep text-white p-4 rounded-xl shadow-2xl border border-secondary/40 flex items-start gap-3 animate-bounce">
@@ -654,10 +654,10 @@ export const AicteCentralReviewPage: React.FC<AicteCentralReviewPageProps> = ({
       </header>
 
       {/* MAIN CONTAINER */}
-      <main className="w-full pt-32 bg-surface-canvas min-h-screen pb-16 flex-1">
+      <main className="w-full pt-32 bg-transparent min-h-screen pb-16 flex-1">
         <div className="flex flex-col w-full">
           {/* Sovereign Breadcrumb & Classification Ribbon */}
-          <div className="w-full bg-surface-container-high px-gutter-md py-space-sm shadow-sm flex flex-wrap items-center justify-between gap-space-sm">
+          <div className="w-full bg-surface-container-high/85 backdrop-blur-md px-gutter-md py-space-sm shadow-sm flex flex-wrap items-center justify-between gap-space-sm">
             <div className="flex items-center gap-space-sm flex-wrap">
               <span className="font-code-sm text-code-sm text-primary font-bold uppercase tracking-widest bg-surface-card px-space-xs py-space-2xs rounded">
                 GOV-NET / AICTE-APEX

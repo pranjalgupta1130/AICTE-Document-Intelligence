@@ -78,13 +78,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="bg-surface-canvas font-body-md text-on-surface antialiased min-h-screen relative overflow-x-hidden selection:bg-primary-fixed selection:text-on-primary-fixed">
-      {/* Background Tricolor Ambient Gradient Glow (slanted institutional diffusion) */}
-      <div className="absolute inset-0 pointer-events-none opacity-40 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-[#FF9933]/15 blur-3xl transform rotate-12" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[34rem] h-[34rem] rounded-full bg-[#FFFFFF]/30 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-[#138808]/15 blur-3xl transform -rotate-12" />
-      </div>
+    <div className="tricolor-slant-bg font-body-md text-on-surface antialiased min-h-screen relative overflow-x-hidden selection:bg-primary-fixed selection:text-on-primary-fixed">
 
       <div className="relative z-10 w-full min-h-screen flex flex-col justify-between py-space-xl px-space-lg">
         {/* Top Header */}
