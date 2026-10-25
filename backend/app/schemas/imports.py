@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict
-from backend.app.models.enums import BatchStatus, FindingSeverity, FindingStatus
+from backend.app.models.enums import AuditAction, BatchStatus, FindingSeverity, FindingStatus
 
 class ColumnMapping(BaseModel):
     apaar_id: Optional[str] = "apaar_id"
@@ -105,3 +105,18 @@ class ValidationFindingRead(BaseModel):
     suggested_action: Optional[str] = None
     status: FindingStatus
     created_at: datetime
+
+class AuditEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    actor_user_id: Optional[str] = None
+    actor_email: str
+    actor_role: str
+    institution_id: Optional[str] = None
+    action: AuditAction
+    object_type: str
+    object_id: Optional[str] = None
+    outcome: str
+    details: Optional[str] = None
+    timestamp: datetime

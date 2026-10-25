@@ -110,6 +110,25 @@ export interface PaginatedFindings {
   total: number;
 }
 
+export interface AuditEventItem {
+  id: string;
+  actor_user_id?: string | null;
+  actor_email: string;
+  actor_role: string;
+  institution_id?: string | null;
+  action: string;
+  object_type: string;
+  object_id?: string | null;
+  outcome: string;
+  details?: string | null;
+  timestamp: string;
+}
+
+export interface PaginatedAuditLogs {
+  items: AuditEventItem[];
+  total: number;
+}
+
 /**
  * Base API fetch helper that attaches the Bearer token and handles error envelopes
  */
@@ -550,6 +569,35 @@ export const batchService = {
   },
 
   /**
+   * Submit validated batch to lock data for AICTE central review on POST /api/v1/batches/{id}/submit
+   */
+  async submitBatch(batchId: string, confirmDeclaration: boolean = true, comments?: string): Promise<{
+    batch_id: string;
+    status: string;
+    submitted_at: string;
+    submitted_by: string;
+    valid_rows: number;
+    error_rows: number;
+    message: string;
+  }> {
+    return apiFetch<{
+      batch_id: string;
+      status: string;
+      submitted_at: string;
+      submitted_by: string;
+      valid_rows: number;
+      error_rows: number;
+      message: string;
+    }>(`/api/v1/batches/${batchId}/submit`, {
+      method: 'POST',
+      body: JSON.stringify({
+        confirm_declaration: confirmDeclaration,
+        comments: comments || 'Institutional nodal submission via unified workspace',
+      }),
+    });
+  },
+
+  /**
    * Submit decision for a batch on POST /api/v1/batches/{batchId}/review
    */
   async reviewBatch(
@@ -684,6 +732,34 @@ export const reviewService = {
     reason: string
   ): Promise<BatchReviewResponse> {
     return apiFetch<BatchReviewResponse>(`/api/v1/batches/${batchId}/review`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        decision,
+        reason,
+      }),
+    });
+  },
+
+  /**
+   * Review and resolve or dismiss a specific validation finding on POST /api/v1/reviews/{findingId}
+   */
+  async reviewFinding(
+    findingId: string,
+    decision: 'RESOLVED' | 'DISMISSED',
+    reason: string
+  ): Promise<{
+    finding_id: string;
+    batch_id: string;
+    status: string;
+    reviewed_by: string;
+    reviewed_at: string;
+    reason: string;
+    message: string;
+  }> {
+    return apiFetch(`/api/v1/reviews/${encodeURIComponent(findingId)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -958,4 +1034,134 @@ export const verificationService = {
     );
   },
 };
+
+export const reportService = {
+  /**
+   * Retrieve paginated system audit logs with server-side filters
+   */
+  async getAuditLogs(params?: {
+    institution_id?: string;
+    action?: string;
+    actor_email?: string;
+    object_type?: string;
+    object_id?: string;
+    outcome?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<PaginatedAuditLogs> {
+    const q = new URLSearchParams();
+    if (params?.institution_id) q.set('institution_id', params.institution_id);
+    if (params?.action && params.action !== 'ALL') q.set('action', params.action);
+    if (params?.actor_email) q.set('actor_email', params.actor_email);
+    if (params?.object_type && params.object_type !== 'ALL') q.set('object_type', params.object_type);
+    if (params?.object_id) q.set('object_id', params.object_id);
+    if (params?.outcome && params.outcome !== 'ALL') q.set('outcome', params.outcome);
+    if (params?.search) q.set('search', params.search);
+    if (params?.limit !== undefined) q.set('limit', String(params.limit));
+    if (params?.offset !== undefined) q.set('offset', String(params.offset));
+
+    const queryStr = q.toString();
+    return apiFetch<PaginatedAuditLogs>(`/api/v1/reports/audit-logs${queryStr ? `?${queryStr}` : ''}`);
+  },
+
+  /**
+   * Retrieve paginated validation findings across batches with filters
+   */
+  async getFindings(params?: {
+    institution_id?: string;
+    batch_id?: string;
+    academic_year?: string;
+    severity?: string;
+    status?: string;
+    rule_code?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<PaginatedFindings> {
+    const q = new URLSearchParams();
+    if (params?.institution_id) q.set('institution_id', params.institution_id);
+    if (params?.batch_id) q.set('batch_id', params.batch_id);
+    if (params?.academic_year) q.set('academic_year', params.academic_year);
+    if (params?.severity && params.severity !== 'ALL') q.set('severity', params.severity);
+    if (params?.status && params.status !== 'ALL') q.set('status', params.status);
+    if (params?.rule_code && params.rule_code !== 'ALL') q.set('rule_code', params.rule_code);
+    if (params?.search) q.set('search', params.search);
+    if (params?.limit !== undefined) q.set('limit', String(params.limit));
+    if (params?.offset !== undefined) q.set('offset', String(params.offset));
+
+    const queryStr = q.toString();
+    return apiFetch<PaginatedFindings>(`/api/v1/reports/findings${queryStr ? `?${queryStr}` : ''}`);
+  },
+
+  /**
+   * Export CSV reports (findings, quality_summary, or audit_logs)
+   */
+  async exportCsvReport(options: {
+    report_type: 'findings' | 'quality_summary' | 'audit_logs';
+    batch_id?: string;
+    institution_id?: string;
+    filename?: string;
+  }): Promise<void> {
+    const session = authService.getCurrentSession();
+    const headers = new Headers();
+    if (session?.token) {
+      headers.set('Authorization', `Bearer ${session.token}`);
+    }
+
+    const q = new URLSearchParams();
+    q.set('report_type', options.report_type);
+    if (options.batch_id) q.set('batch_id', options.batch_id);
+    if (options.institution_id) q.set('institution_id', options.institution_id);
+
+    const response = await fetch(`/api/v1/reports/export?${q.toString()}`, { headers });
+    if (!response.ok) {
+      let errMsg = `Failed to export ${options.report_type} CSV.`;
+      try {
+        const errJson = await response.json();
+        errMsg = errJson.error?.message || errJson.message || errJson.detail || errMsg;
+      } catch {
+        // fallback
+      }
+      throw new Error(errMsg);
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = options.filename || `${options.report_type}_export.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Download official CSV import template directly from backend
+   */
+  async downloadTemplateCsv(filename = 'AICTE_APAAR_Batch_Template.csv'): Promise<void> {
+    const session = authService.getCurrentSession();
+    const headers = new Headers();
+    if (session?.token) {
+      headers.set('Authorization', `Bearer ${session.token}`);
+    }
+
+    const response = await fetch('/api/v1/imports/template', { headers });
+    if (!response.ok) {
+      throw new Error('Failed to download official import template from server.');
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+};
+
 

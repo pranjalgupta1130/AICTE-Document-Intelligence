@@ -1,297 +1,221 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { AuthSession } from '../types/auth';
+import {
+  batchService,
+  reportService,
+  reviewService,
+  BatchItem,
+  BackendFinding,
+} from '../services/api';
 
 interface DataQualityFindingsPageProps {
   session?: AuthSession | null;
+  initialBatchId?: string | null;
   onLogout?: () => void;
-  onNavigateTab?: (tab: string) => void;
+  onNavigateTab?: (tab: string, batchId?: string) => void;
 }
-
-interface FindingItem {
-  row: number;
-  studentId: string;
-  name: string;
-  branch: string;
-  rule: string;
-  severity: 'BLOCKING' | 'WARNING' | 'RESOLVED';
-  field: string;
-  explanation: string;
-  suggestedAction: string;
-  inputLabel: string;
-  inputHint: string;
-  placeholder: string;
-  defaultVal: string;
-  resolvedValue?: string;
-  auditNote?: string;
-}
-
-const INITIAL_FINDINGS: Record<number, FindingItem> = {
-  42: {
-    row: 42,
-    studentId: 'NITT-2025-CS-042',
-    name: 'Aarav K. Sundaram',
-    branch: 'B.Tech Computer Science',
-    rule: 'RULE-R6-MISSING-APAAR',
-    severity: 'BLOCKING',
-    field: 'apaar_id',
-    explanation:
-      'APAAR ID cell is empty. Mandatory academic identifier under AICTE mandate. Without it, academic credits cannot be transferred to the Academic Bank of Credits (ABC).',
-    suggestedAction:
-      'Input valid 12-digit APAAR syntax (e.g. 7481-9920-3341) verified via ABC registry.',
-    inputLabel: 'Rectify APAAR Identifier',
-    inputHint: 'Format: XXXX-XXXX-XXXX (12 digits)',
-    placeholder: '7481-9920-3341',
-    defaultVal: '',
-  },
-  77: {
-    row: 77,
-    studentId: 'NITT-2025-ME-077',
-    name: 'Priyanka Venkatesh',
-    branch: 'B.Tech Mechanical Eng',
-    rule: 'RULE-R5-BATCH-DUPLICATE',
-    severity: 'BLOCKING',
-    field: 'apaar_id',
-    explanation:
-      'Exact APAAR ID 8129-3321-9011 matches row #108 in same batch. Dual student identity collision detected.',
-    suggestedAction:
-      'Inspect conflicting rows / Rectify duplicate student ID with correct National Identity register entry.',
-    inputLabel: 'Replace with Distinct APAAR ID',
-    inputHint: 'Must not collide with row #108',
-    placeholder: '8129-3321-9012',
-    defaultVal: '8129-3321-9011',
-  },
-  122: {
-    row: 122,
-    studentId: 'NITT-2025-ECE-122',
-    name: 'Devraj Mukherjee',
-    branch: 'B.Tech Electronics & Comm',
-    rule: 'RULE-R7-INTAKE-EXCEEDED',
-    severity: 'BLOCKING',
-    field: 'programme_enrolment',
-    explanation:
-      'ECE actual enrolment (122) exceeds approved regular intake (120) by 2 seats. AICTE ceiling breach.',
-    suggestedAction:
-      'Reclassify as approved supernumerary category (e.g., TFW, PMSSS, or EWS) or rectify admission roster.',
-    inputLabel: 'Adjust Seat Category Classification',
-    inputHint: 'Values: REGULAR | TFW_SUPERNUMERARY | PMSSS_QUOTA | EWS_SUPERNUMERARY',
-    placeholder: 'TFW_SUPERNUMERARY',
-    defaultVal: 'REGULAR',
-  },
-  115: {
-    row: 115,
-    studentId: 'NITT-2025-CIV-115',
-    name: 'Rohan Sharma',
-    branch: 'B.Tech Civil Engineering',
-    rule: 'RULE-R4-SEAT-INCONSISTENCY',
-    severity: 'WARNING',
-    field: 'nri_status',
-    explanation:
-      'Marked as NRI quota but nationality listed as Indian without sponsor declaration on file.',
-    suggestedAction:
-      'Attach upload affidavit token or reclassify quota code to DOMESTIC_OPEN.',
-    inputLabel: 'Sponsor Declaration Reference No.',
-    inputHint: 'AFFIDAVIT-XXXXXX or update quota',
-    placeholder: 'AFFIDAVIT-NITT-2025-881',
-    defaultVal: '',
-  },
-  204: {
-    row: 204,
-    studentId: 'NITT-2025-EE-204',
-    name: 'Kavita Chawla',
-    branch: 'B.Tech Electrical Eng',
-    rule: 'RULE-R8-SYNTAX-SUSPECT',
-    severity: 'WARNING',
-    field: 'apaar_id',
-    explanation:
-      'Mock Adapter check returned MOCK_UNAVAILABLE for gateway response during batch run.',
-    suggestedAction:
-      'Trigger immediate mock adapter retry probe to clear mock gateway queue.',
-    inputLabel: 'Re-trigger Adapter Gateway Protocol',
-    inputHint: 'Enter MOCK_VERIFIED to force mock handshake',
-    placeholder: 'MOCK_VERIFIED',
-    defaultVal: 'MOCK_UNAVAILABLE',
-  },
-};
 
 export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = ({
   session,
+  initialBatchId,
   onLogout,
   onNavigateTab,
 }) => {
-  const [findings, setFindings] = useState<Record<number, FindingItem>>(INITIAL_FINDINGS);
-  const [activeSelectedRow, setActiveSelectedRow] = useState<number>(42);
+  // Batch and findings state
+  const [selectedBatchId, setSelectedBatchId] = useState<string>(initialBatchId || '');
+  const [availableBatches, setAvailableBatches] = useState<BatchItem[]>([]);
+  const [selectedBatch, setSelectedBatch] = useState<BatchItem | null>(null);
+  const [findings, setFindings] = useState<BackendFinding[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isResolving, setIsResolving] = useState<boolean>(false);
+
+  // Active finding for detail drawer
+  const [activeFindingId, setActiveFindingId] = useState<string | null>(null);
+  const [auditNote, setAuditNote] = useState<string>('');
+
+  // Filters
   const [severityFilter, setSeverityFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [rulePrefixFilter, setRulePrefixFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  // Drawer Form State
-  const activeFinding = findings[activeSelectedRow] || findings[42];
-  const [inputVal, setInputVal] = useState<string>(activeFinding.defaultVal);
-  const [auditNote, setAuditNote] = useState<string>('');
-  const [toastMessage, setToastMessage] = useState<{ title: string; desc: string } | null>(null);
+  // Toast notification
+  const [toastMessage, setToastMessage] = useState<{ title: string; desc: string; type?: 'SUCCESS' | 'ERROR' | 'INFO' } | null>(null);
 
-  const showToast = (title: string, desc: string) => {
-    setToastMessage({ title, desc });
+  const showToast = (title: string, desc: string, type: 'SUCCESS' | 'ERROR' | 'INFO' = 'SUCCESS') => {
+    setToastMessage({ title, desc, type });
     setTimeout(() => {
       setToastMessage(null);
     }, 4500);
   };
 
-  // Switch active row in drawer
-  const handleSelectRow = (rowNum: number) => {
-    setActiveSelectedRow(rowNum);
-    const item = findings[rowNum];
-    if (item) {
-      setInputVal(item.resolvedValue || item.defaultVal || '');
-      setAuditNote(item.auditNote || '');
-    }
-  };
+  // Determine user role and institution
+  const institutionCode = session?.instCode && session.instCode !== 'HQ-STATUTORY-DELHI' ? session.instCode : undefined;
 
-  // Validation logic for active drawer input
-  const validationState = useMemo(() => {
-    if (!inputVal || !inputVal.trim()) {
-      return {
-        isValid: false,
-        msg: 'Field cannot remain empty for evaluation.',
-        status: 'empty',
-      };
-    }
-
-    if (
-      activeFinding.rule === 'RULE-R6-MISSING-APAAR' ||
-      activeFinding.rule === 'RULE-R5-BATCH-DUPLICATE'
-    ) {
-      const cleanDigits = inputVal.replace(/[^0-9]/g, '');
-      if (inputVal === '8129-3321-9011') {
-        return {
-          isValid: false,
-          msg: 'Collision! Matches duplicate row #108 in this batch.',
-          status: 'error',
-        };
+  // Load available batches on mount
+  useEffect(() => {
+    let isMounted = true;
+    const fetchBatches = async () => {
+      try {
+        const res = await batchService.listBatches({
+          institution_id: institutionCode,
+          limit: 50,
+        });
+        if (isMounted) {
+          setAvailableBatches(res.items);
+          if (res.items.length > 0 && !selectedBatchId) {
+            // Default to first batch or initialBatchId
+            const defaultId = initialBatchId || res.items[0].id;
+            setSelectedBatchId(defaultId);
+            const found = res.items.find((b) => b.id === defaultId);
+            if (found) setSelectedBatch(found);
+          }
+        }
+      } catch (err: any) {
+        console.error('Failed to load batches:', err);
       }
-      if (cleanDigits.length === 12) {
-        return {
-          isValid: true,
-          msg: 'Valid 12-digit syntax detected. Ready for automated check.',
-          status: 'valid',
-        };
-      }
-      return {
-        isValid: false,
-        msg: `Need 12 digits (currently ${cleanDigits.length}).`,
-        status: 'review',
-      };
-    }
-
-    // Default valid for other adjustments
-    return {
-      isValid: true,
-      msg: 'Input syntax satisfied. Re-validation enabled.',
-      status: 'valid',
     };
-  }, [inputVal, activeFinding]);
+    fetchBatches();
+    return () => {
+      isMounted = false;
+    };
+  }, [institutionCode, initialBatchId]);
 
-  // Apply in-place correction
-  const handleApplyCorrection = () => {
-    setFindings((prev) => {
-      const updated = { ...prev };
-      const current = updated[activeSelectedRow];
-      if (current) {
-        updated[activeSelectedRow] = {
-          ...current,
-          severity: 'RESOLVED',
-          resolvedValue: inputVal,
-          auditNote: auditNote,
-        };
+  // Keep selectedBatch in sync with selectedBatchId
+  useEffect(() => {
+    if (selectedBatchId && availableBatches.length > 0) {
+      const found = availableBatches.find((b) => b.id === selectedBatchId);
+      setSelectedBatch(found || null);
+    } else if (!selectedBatchId) {
+      setSelectedBatch(null);
+    }
+  }, [selectedBatchId, availableBatches]);
+
+  // Fetch findings based on active filters
+  const loadFindings = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await reportService.getFindings({
+        batch_id: selectedBatchId || undefined,
+        institution_id: institutionCode,
+        severity: severityFilter !== 'ALL' ? severityFilter : undefined,
+        status: statusFilter !== 'ALL' ? statusFilter : undefined,
+        rule_code: rulePrefixFilter !== 'ALL' ? rulePrefixFilter : undefined,
+        search: searchTerm.trim() || undefined,
+        limit: 150,
+      });
+      setFindings(res.items);
+      // If active finding is not in new list, pick the first one
+      if (res.items.length > 0) {
+        if (!activeFindingId || !res.items.some((f) => f.id === activeFindingId)) {
+          setActiveFindingId(res.items[0].id);
+        }
+      } else {
+        setActiveFindingId(null);
       }
-      return updated;
-    });
-
-    showToast(
-      `Row #${activeSelectedRow} Rectified`,
-      `${activeFinding.studentId}: Discrepancy cleared and signed into audit trail.`
-    );
-  };
-
-  // Counts
-  const blockingCount = useMemo(() => {
-    return Object.values(findings).filter((f) => f.severity === 'BLOCKING').length;
-  }, [findings]);
-
-  const warningCount = useMemo(() => {
-    return Object.values(findings).filter((f) => f.severity === 'WARNING').length;
-  }, [findings]);
-
-  const resolvedCount = useMemo(() => {
-    return Object.values(findings).filter((f) => f.severity === 'RESOLVED').length;
-  }, [findings]);
-
-  // Filtered rows for table
-  const displayedFindings = useMemo(() => {
-    let list = Object.values(findings);
-
-    if (severityFilter !== 'ALL') {
-      list = list.filter((item) => item.severity === severityFilter);
+    } catch (err: any) {
+      console.error('Failed to load findings:', err);
+      showToast('Error', err.message || 'Failed to fetch findings from server', 'ERROR');
+    } finally {
+      setIsLoading(false);
     }
+  }, [selectedBatchId, institutionCode, severityFilter, statusFilter, rulePrefixFilter, searchTerm]);
 
-    if (rulePrefixFilter !== 'ALL') {
-      if (rulePrefixFilter === 'MISSING') list = list.filter((i) => i.rule.includes('MISSING-APAAR'));
-      if (rulePrefixFilter === 'DUPLICATES') list = list.filter((i) => i.rule.includes('BATCH-DUPLICATE'));
-      if (rulePrefixFilter === 'QUOTA') list = list.filter((i) => i.rule.includes('INTAKE-EXCEEDED'));
-      if (rulePrefixFilter === 'CATEGORY') list = list.filter((i) => i.rule.includes('SEAT-INCONSISTENCY'));
-      if (rulePrefixFilter === 'GATEWAY') list = list.filter((i) => i.rule.includes('SYNTAX-SUSPECT'));
+  useEffect(() => {
+    loadFindings();
+  }, [loadFindings]);
+
+  // Active finding object
+  const activeFinding = useMemo(() => {
+    if (!activeFindingId) return null;
+    return findings.find((f) => f.id === activeFindingId) || null;
+  }, [findings, activeFindingId]);
+
+  // Reset audit note when active finding changes
+  useEffect(() => {
+    setAuditNote('');
+  }, [activeFindingId]);
+
+  // Metrics calculation
+  const { totalCount, blockingCount, warningCount, resolvedCount } = useMemo(() => {
+    let total = findings.length;
+    let blocking = 0;
+    let warning = 0;
+    let resolved = 0;
+    for (const f of findings) {
+      if (f.status === 'RESOLVED' || f.status === 'DISMISSED') {
+        resolved++;
+      } else if (f.severity === 'BLOCKING_ERROR') {
+        blocking++;
+      } else if (f.severity === 'WARNING') {
+        warning++;
+      }
     }
+    return {
+      totalCount: total,
+      blockingCount: blocking,
+      warningCount: warning,
+      resolvedCount: resolved,
+    };
+  }, [findings]);
 
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
-      list = list.filter(
-        (i) =>
-          i.studentId.toLowerCase().includes(q) ||
-          i.name.toLowerCase().includes(q) ||
-          i.rule.toLowerCase().includes(q) ||
-          String(i.row).includes(q)
+  // Handle Finding Resolution
+  const handleResolveFinding = async (decision: 'RESOLVED' | 'DISMISSED') => {
+    if (!activeFinding) return;
+    setIsResolving(true);
+    try {
+      const reason = auditNote.trim() || `${decision} via institutional quality review workspace`;
+      await reviewService.reviewFinding(activeFinding.id, decision, reason);
+      showToast(
+        decision === 'RESOLVED' ? 'Finding Remediated' : 'Finding Dismissed',
+        `Finding ${activeFinding.id} (${activeFinding.rule_code}) recorded into immutable audit trail.`
       );
+      setAuditNote('');
+      await loadFindings();
+    } catch (err: any) {
+      console.error('Resolution failed:', err);
+      showToast('Action Blocked', err.message || 'Failed to record remediation decision', 'ERROR');
+    } finally {
+      setIsResolving(false);
     }
-
-    return list;
-  }, [findings, severityFilter, rulePrefixFilter, searchTerm]);
+  };
 
   // Export Findings CSV
-  const handleExportCSV = () => {
-    const headers = ['Row_Number', 'Student_ID', 'Student_Name', 'Programme', 'Rule', 'Severity', 'Explanation'];
-    const rows = Object.values(findings).map((f) => [
-      f.row,
-      `"${f.studentId}"`,
-      `"${f.name}"`,
-      `"${f.branch}"`,
-      `"${f.rule}"`,
-      `"${f.severity}"`,
-      `"${f.explanation}"`,
-    ]);
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', 'BATCH_2025_NITTRICHY_004_Findings.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('Export Initiated', 'Downloaded Findings CSV for Batch #BATCH-2025-NITTRICHY-004.');
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      await reportService.exportCsvReport({
+        report_type: 'findings',
+        batch_id: selectedBatchId || undefined,
+      });
+      showToast('Export Initiated', 'Validation findings CSV downloaded with formula protection.');
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      showToast('Export Failed', err.message || 'Failed to download report', 'ERROR');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  const handleFullReeval = () => {
-    showToast('Rules Engine Triggered', 'Re-evaluating 1,420 rows against NAD-AICTE v2.4 rule specifications...');
-  };
+  // Unique rule codes for filter pills
+  const availableRuleCodes = useMemo(() => {
+    const set = new Set<string>();
+    findings.forEach((f) => set.add(f.rule_code));
+    return Array.from(set).sort();
+  }, [findings]);
 
   return (
     <div className="tricolor-slant-bg font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-24 right-8 bg-primary text-on-primary px-space-md py-space-sm rounded-lg shadow-xl flex items-center gap-space-sm z-50 border border-secondary/40 animate-bounce">
+        <div
+          className={`fixed bottom-24 right-8 text-on-primary px-space-md py-space-sm rounded-lg shadow-xl flex items-center gap-space-sm z-50 border border-secondary/40 animate-bounce ${
+            toastMessage.type === 'ERROR' ? 'bg-status-error' : 'bg-primary'
+          }`}
+        >
           <span className="material-symbols-outlined text-status-verified text-[22px]">
-            check_circle
+            {toastMessage.type === 'ERROR' ? 'error' : 'check_circle'}
           </span>
           <div className="flex flex-col">
             <span className="font-headline-sm text-headline-sm">{toastMessage.title}</span>
@@ -329,7 +253,7 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
               </div>
             </div>
             <span className="font-code-sm text-code-sm bg-surface-container-high text-primary px-space-xs py-space-2xs rounded-lg border border-border-strong font-semibold ml-space-xs">
-              SIH-2026 PROTOTYPE
+              LIVE PLATFORM
             </span>
           </div>
 
@@ -339,33 +263,9 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
                 school
               </span>
               <span className="font-code-sm text-code-sm text-on-surface-variant max-w-[280px] truncate">
-                {session?.instCode
-                  ? `Node (${session.instCode})`
-                  : 'National Institute of Technology, Trichy (ID: AICTE-1-49281)'}
+                {session?.instCode ? `Node (${session.instCode})` : 'AICTE Central Headquarters'}
               </span>
             </div>
-
-            <div className="relative">
-              <select
-                defaultValue={session?.roleTitle || 'Institution Operator'}
-                className="font-label-md text-label-md bg-surface-card border border-border-strong text-primary rounded-lg px-space-sm py-space-xs focus:ring-1 focus:ring-secondary focus:outline-none cursor-pointer"
-              >
-                <option value="Institution Admin">Institution Admin</option>
-                <option value="Institution Operator">Institution Operator</option>
-                <option value="AICTE Reviewer">AICTE Reviewer</option>
-              </select>
-            </div>
-
-            <button
-              aria-label="Notifications"
-              onClick={() => showToast('Audit Alert', `${blockingCount} blocking findings require rectification.`)}
-              className="relative p-space-xs text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[20px]">notifications</span>
-              {blockingCount > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-status-error rounded-full animate-pulse"></span>
-              )}
-            </button>
 
             <div className="flex items-center gap-space-xs pl-space-xs border-l border-border-subtle">
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center font-headline-sm text-headline-sm text-on-primary font-bold shadow-sm">
@@ -375,7 +275,7 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
               </div>
               <div className="hidden md:flex flex-col">
                 <span className="font-label-md text-label-md text-on-surface font-semibold leading-tight">
-                  {session?.roleTitle || 'RK (Registrar)'}
+                  {session?.roleTitle || 'Institutional Officer'}
                 </span>
                 <span className="font-label-sm text-label-sm text-outline leading-tight">
                   {session?.userEmail || 'Academic Cell'}
@@ -400,6 +300,7 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
             { id: 'dashboard', label: 'Institution Dashboard' },
             { id: 'import', label: 'Bulk Import & Validation' },
             { id: 'findings', label: 'Data Quality & Findings' },
+            { id: 'history', label: 'Import History' },
             { id: 'aicte-review', label: 'AICTE Central Review' },
             { id: 'records', label: 'Student Record & Certificate' },
             { id: 'reports', label: 'Audit Logs & Reports' },
@@ -410,7 +311,7 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
                 key={tab.id}
                 onClick={() => {
                   if (onNavigateTab) {
-                    onNavigateTab(tab.id);
+                    onNavigateTab(tab.id, selectedBatchId || undefined);
                   }
                 }}
                 className={`font-title-md text-title-md px-space-sm h-full flex items-center transition-colors whitespace-nowrap cursor-pointer ${
@@ -430,15 +331,14 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
           <div className="flex items-center gap-space-xs overflow-hidden">
             <span className="w-2 h-2 rounded-full bg-status-verified animate-pulse shrink-0"></span>
             <span className="font-code-sm text-code-sm text-on-surface font-medium truncate">
-              APAAR ID-Based Student Verification Engine • Mock Adapter Active (MOCK_VERIFIED / MOCK_UNAVAILABLE) • Synthetic Dataset v2.4
+              {selectedBatch
+                ? `Active Ingestion Batch: ${selectedBatch.id} (${selectedBatch.source_filename}) • Total: ${selectedBatch.total_rows} • Valid: ${selectedBatch.valid_rows} • Errors: ${selectedBatch.error_rows}`
+                : 'All Persisted Institutional Batches Scope • Deterministic NAD-AICTE Engine Active'}
             </span>
           </div>
           <div className="hidden sm:flex items-center gap-space-sm shrink-0">
-            <span className="font-label-sm text-label-sm text-outline">
-              Sovereign Security: ISO/IEC 27001 Validated
-            </span>
             <span className="font-label-sm text-label-sm text-status-verified font-medium">
-              ● Sync Operational
+              ● Database Synchronized
             </span>
           </div>
         </div>
@@ -455,27 +355,50 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
                 <span>Reconciliation &amp; Explainable Findings Engine</span>
               </div>
               <span className="text-outline">/</span>
-              <span className="font-code-sm text-code-sm bg-surface-subtle text-on-surface px-space-xs py-space-2xs rounded border border-border-subtle">
-                BATCH-2025-NITTRICHY-004
-              </span>
-              <span className="font-label-sm text-label-sm px-space-xs py-space-2xs bg-status-review-surface text-status-review rounded font-semibold uppercase tracking-wider border border-status-review-border">
-                Stage: Ingestion Validation
-              </span>
+
+              {/* Batch Selector Dropdown */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-outline font-semibold uppercase">Batch:</span>
+                <select
+                  value={selectedBatchId}
+                  onChange={(e) => setSelectedBatchId(e.target.value)}
+                  className="font-code-sm text-code-sm bg-surface-card text-on-surface px-space-xs py-1 rounded border border-border-strong focus:outline-none focus:ring-1 focus:ring-secondary cursor-pointer"
+                >
+                  <option value="">All Batches (Institution Scope)</option>
+                  {availableBatches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.id} ({b.source_filename} - {b.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedBatch && (
+                <span className="font-label-sm text-label-sm px-space-xs py-space-2xs bg-status-review-surface text-status-review rounded font-semibold uppercase tracking-wider border border-status-review-border">
+                  Status: {selectedBatch.status}
+                </span>
+              )}
             </div>
 
-            <div className="flex items-center gap-space-sm">
-              <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider font-semibold">
-                Active Run ID:
-              </span>
-              <span className="font-code-sm text-code-sm text-on-surface bg-surface-subtle px-space-xs py-space-2xs rounded border border-border-subtle">
-                RUN-7749-EVAL
-              </span>
+            <div className="flex items-center gap-space-sm flex-wrap">
               <button
-                onClick={handleFullReeval}
-                className="flex items-center gap-space-xs px-space-sm py-space-xs bg-surface-subtle text-primary hover:bg-surface-container-high rounded text-label-md font-label-md transition-colors border border-border-subtle cursor-pointer"
+                onClick={loadFindings}
+                disabled={isLoading}
+                className="flex items-center gap-space-xs px-space-sm py-space-xs bg-surface-card text-primary hover:bg-surface-subtle rounded text-label-md font-label-md transition-colors border border-border-subtle cursor-pointer disabled:opacity-50"
               >
-                <span className="material-symbols-outlined text-[16px]">refresh</span>
-                <span>Re-run Rules Engine</span>
+                <span className={`material-symbols-outlined text-[16px] ${isLoading ? 'animate-spin' : ''}`}>
+                  refresh
+                </span>
+                <span>Refresh Findings</span>
+              </button>
+
+              <button
+                onClick={handleExportCSV}
+                disabled={isExporting}
+                className="flex items-center gap-space-xs px-space-sm py-space-xs bg-secondary text-on-secondary hover:bg-secondary-fixed rounded text-label-md font-label-md transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-[16px]">file_download</span>
+                <span>Export Findings (.CSV)</span>
               </button>
             </div>
           </section>
@@ -483,107 +406,99 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
           {/* Main Space */}
           <div className="max-w-7xl mx-auto w-full px-gutter-md py-space-2xl flex flex-col gap-space-2xl">
             {/* Metric Cards Bento */}
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-space-lg">
-              {/* Card 1 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-lg">
+              {/* Card 1: Ingested Cohort / Active Batch */}
               <div className="bg-surface-card rounded-xl p-space-xl shadow-sm border border-border-subtle flex flex-col justify-between hover:border-border-strong transition-all">
                 <div className="flex items-center justify-between">
                   <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider font-semibold">
-                    Ingested Cohort
+                    {selectedBatch ? 'Batch Records' : 'Total Findings'}
                   </span>
-                  <span className="material-symbols-outlined text-outline text-[20px]">group</span>
+                  <span className="material-symbols-outlined text-outline text-[20px]">
+                    {selectedBatch ? 'group' : 'data_object'}
+                  </span>
                 </div>
                 <div className="mt-space-lg">
                   <div className="font-display-lg text-display-lg text-primary tracking-tight font-bold">
-                    1,420
+                    {selectedBatch ? selectedBatch.total_rows.toLocaleString() : totalCount}
                   </div>
                   <div className="font-body-sm text-body-sm text-on-surface-variant mt-space-xs flex items-center gap-space-xs">
                     <span className="w-2 h-2 rounded-full bg-secondary"></span>
-                    <span>UG &amp; PG Admissions</span>
+                    <span>{selectedBatch ? `${selectedBatch.valid_rows} Valid Rows Persisted` : 'Across active batches'}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Card 2 */}
+              {/* Card 2: Critical Blocking Errors */}
               <div className="bg-surface-card rounded-xl p-space-xl shadow-sm border border-border-subtle flex flex-col justify-between hover:border-border-strong transition-all">
                 <div className="flex items-center justify-between">
                   <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider font-semibold">
-                    Total Flagged
+                    Critical Blocking Errors
                   </span>
-                  <span className="material-symbols-outlined text-status-review text-[20px]">
-                    report_problem
+                  <span className="material-symbols-outlined text-status-error text-[20px]">
+                    cancel
                   </span>
                 </div>
                 <div className="mt-space-lg">
                   <div className="flex items-baseline gap-space-sm">
-                    <span className="font-display-lg text-display-lg text-on-surface tracking-tight font-bold">
-                      28
+                    <span className="font-display-lg text-display-lg text-status-error tracking-tight font-bold">
+                      {blockingCount}
                     </span>
                     <span className="font-label-sm text-label-sm text-status-error font-semibold px-2 py-0.5 rounded bg-status-error-surface border border-status-error-border">
-                      {blockingCount} Blocking
+                      Blocks Ingestion
                     </span>
                   </div>
                   <div className="font-body-sm text-body-sm text-outline mt-space-xs">
-                    {warningCount} Review Warnings
+                    Must be resolved prior to submission
                   </div>
                 </div>
               </div>
 
-              {/* Card 3 */}
+              {/* Card 3: Non-Blocking Warnings */}
               <div className="bg-surface-card rounded-xl p-space-xl shadow-sm border border-border-subtle flex flex-col justify-between hover:border-border-strong transition-all">
                 <div className="flex items-center justify-between">
                   <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider font-semibold">
-                    Completeness
+                    Review Warnings
+                  </span>
+                  <span className="material-symbols-outlined text-status-review text-[20px]">
+                    warning
+                  </span>
+                </div>
+                <div className="mt-space-lg">
+                  <div className="flex items-baseline gap-space-sm">
+                    <span className="font-display-lg text-display-lg text-status-review tracking-tight font-bold">
+                      {warningCount}
+                    </span>
+                    <span className="font-label-sm text-label-sm text-status-review font-semibold px-2 py-0.5 rounded bg-status-review-surface border border-status-review-border">
+                      Provisional
+                    </span>
+                  </div>
+                  <div className="font-body-sm text-body-sm text-outline mt-space-xs">
+                    Allowable for submission review
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 4: Resolved / Remediated */}
+              <div className="bg-surface-card rounded-xl p-space-xl shadow-sm border border-border-subtle flex flex-col justify-between hover:border-border-strong transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider font-semibold">
+                    Resolved Findings
                   </span>
                   <span className="font-headline-sm text-headline-sm text-status-verified font-bold">
-                    98.2%
+                    {resolvedCount}
                   </span>
                 </div>
                 <div className="mt-space-lg">
                   <div className="w-full bg-surface-subtle h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-status-verified h-full rounded-full w-[98.2%]"></div>
+                    <div
+                      className="bg-status-verified h-full rounded-full transition-all"
+                      style={{
+                        width: `${totalCount > 0 ? Math.min(100, Math.round((resolvedCount / totalCount) * 100)) : 0}%`,
+                      }}
+                    ></div>
                   </div>
                   <span className="font-body-sm text-body-sm text-outline mt-space-sm block">
-                    26 attributes missing
-                  </span>
-                </div>
-              </div>
-
-              {/* Card 4 */}
-              <div className="bg-surface-card rounded-xl p-space-xl shadow-sm border border-border-subtle flex flex-col justify-between hover:border-border-strong transition-all">
-                <div className="flex items-center justify-between">
-                  <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider font-semibold">
-                    Syntax Validity
-                  </span>
-                  <span className="font-headline-sm text-headline-sm text-status-verified font-bold">
-                    99.1%
-                  </span>
-                </div>
-                <div className="mt-space-lg">
-                  <div className="w-full bg-surface-subtle h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-secondary h-full rounded-full w-[99.1%]"></div>
-                  </div>
-                  <span className="font-body-sm text-body-sm text-outline mt-space-sm block">
-                    13 format violations
-                  </span>
-                </div>
-              </div>
-
-              {/* Card 5 */}
-              <div className="bg-surface-card rounded-xl p-space-xl shadow-sm border border-border-subtle flex flex-col justify-between hover:border-border-strong transition-all">
-                <div className="flex items-center justify-between">
-                  <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider font-semibold">
-                    Quota Adherence
-                  </span>
-                  <span className="font-headline-sm text-headline-sm text-status-review font-bold">
-                    98.4%
-                  </span>
-                </div>
-                <div className="mt-space-lg">
-                  <div className="w-full bg-surface-subtle h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-status-review h-full rounded-full w-[98.4%]"></div>
-                  </div>
-                  <span className="font-body-sm text-body-sm text-outline mt-space-sm block">
-                    2 branch deviations
+                    {totalCount > 0 ? `${Math.round((resolvedCount / totalCount) * 100)}% rectified in audit log` : '0%'}
                   </span>
                 </div>
               </div>
@@ -592,31 +507,40 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
             {/* Filters & Search Toolbar */}
             <div className="bg-surface-card rounded-xl p-space-lg shadow-sm border border-border-subtle flex flex-col gap-space-lg">
               <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-space-lg">
-                {/* Severity Pills */}
+                {/* Severity & Status Pills */}
                 <div className="flex items-center gap-space-xs bg-surface-subtle p-space-2xs rounded-lg overflow-x-auto border border-border-subtle">
                   <button
-                    onClick={() => setSeverityFilter('ALL')}
+                    onClick={() => {
+                      setSeverityFilter('ALL');
+                      setStatusFilter('ALL');
+                    }}
                     className={`px-space-md py-space-xs rounded-lg font-label-md text-label-md font-semibold transition-all cursor-pointer ${
-                      severityFilter === 'ALL'
+                      severityFilter === 'ALL' && statusFilter === 'ALL'
                         ? 'text-primary bg-surface-card shadow-sm'
                         : 'text-on-surface-variant hover:bg-surface-card/60'
                     }`}
                   >
-                    All Findings (28)
+                    All Findings ({totalCount})
                   </button>
                   <button
-                    onClick={() => setSeverityFilter('BLOCKING')}
+                    onClick={() => {
+                      setSeverityFilter('BLOCKING_ERROR');
+                      setStatusFilter('ALL');
+                    }}
                     className={`px-space-md py-space-xs rounded-lg font-label-md text-label-md font-semibold transition-all flex items-center gap-space-xs cursor-pointer ${
-                      severityFilter === 'BLOCKING'
+                      severityFilter === 'BLOCKING_ERROR'
                         ? 'text-status-error bg-surface-card shadow-sm'
                         : 'text-status-error hover:bg-surface-card/60'
                     }`}
                   >
                     <span className="w-2 h-2 rounded-full bg-status-error"></span>
-                    <span>Blocking Error ({blockingCount})</span>
+                    <span>Blocking ({blockingCount})</span>
                   </button>
                   <button
-                    onClick={() => setSeverityFilter('WARNING')}
+                    onClick={() => {
+                      setSeverityFilter('WARNING');
+                      setStatusFilter('ALL');
+                    }}
                     className={`px-space-md py-space-xs rounded-lg font-label-md text-label-md font-semibold transition-all flex items-center gap-space-xs cursor-pointer ${
                       severityFilter === 'WARNING'
                         ? 'text-status-review bg-surface-card shadow-sm'
@@ -624,12 +548,15 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
                     }`}
                   >
                     <span className="w-2 h-2 rounded-full bg-status-review"></span>
-                    <span>Review Warning ({warningCount})</span>
+                    <span>Warnings ({warningCount})</span>
                   </button>
                   <button
-                    onClick={() => setSeverityFilter('RESOLVED')}
+                    onClick={() => {
+                      setSeverityFilter('ALL');
+                      setStatusFilter('RESOLVED');
+                    }}
                     className={`px-space-md py-space-xs rounded-lg font-label-md text-label-md font-semibold transition-all flex items-center gap-space-xs cursor-pointer ${
-                      severityFilter === 'RESOLVED'
+                      statusFilter === 'RESOLVED'
                         ? 'text-status-verified bg-surface-card shadow-sm'
                         : 'text-status-verified hover:bg-surface-card/60'
                     }`}
@@ -649,74 +576,74 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
                       type="text"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Search by Student ID, APAAR ID, or Row..."
+                      placeholder="Search by Rule, Record ID, Row, or Field..."
                       className="w-full pl-9 pr-12 py-space-xs bg-surface-subtle border border-border-subtle rounded-lg text-body-md font-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-secondary placeholder-outline transition-colors focus:bg-surface-card"
                     />
-                    <span className="font-code-sm text-code-sm text-outline absolute right-3 top-2 px-1.5 py-0.5 bg-surface-card rounded border border-border-subtle text-[10px]">
-                      Ctrl+F
-                    </span>
+                    {searchTerm && (
+                      <button
+                        onClick={() => setSearchTerm('')}
+                        className="absolute right-3 top-2.5 text-outline hover:text-on-surface cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">close</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Rule Filter Pills */}
-              <div className="flex items-center gap-space-sm flex-wrap border-t border-border-subtle pt-space-md">
-                <span className="font-label-sm text-label-sm text-outline uppercase font-semibold mr-space-xs">
-                  Rule Filter:
-                </span>
-                {[
-                  { id: 'MISSING', label: 'Missing APAAR (8)' },
-                  { id: 'DUPLICATES', label: 'Batch Duplicates (3)' },
-                  { id: 'QUOTA', label: 'Intake Quota Ceiling (2)' },
-                  { id: 'CATEGORY', label: 'Category Inconsistency (9)' },
-                  { id: 'GATEWAY', label: 'Gateway Lifecycle (6)' },
-                ].map((rf) => (
+              {/* Dynamic Rule Filter Pills */}
+              {availableRuleCodes.length > 0 && (
+                <div className="flex items-center gap-space-sm flex-wrap border-t border-border-subtle pt-space-md">
+                  <span className="font-label-sm text-label-sm text-outline uppercase font-semibold mr-space-xs">
+                    Rule Codes:
+                  </span>
+                  {availableRuleCodes.map((rc) => (
+                    <button
+                      key={rc}
+                      onClick={() => setRulePrefixFilter((prev) => (prev === rc ? 'ALL' : rc))}
+                      className={`px-space-sm py-space-xs rounded-full font-code-sm text-code-sm transition-colors cursor-pointer border ${
+                        rulePrefixFilter === rc
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-surface-subtle text-on-surface-variant border-border-subtle hover:text-primary hover:bg-surface-container-high'
+                      }`}
+                    >
+                      {rc}
+                    </button>
+                  ))}
                   <button
-                    key={rf.id}
-                    onClick={() =>
-                      setRulePrefixFilter((prev) => (prev === rf.id ? 'ALL' : rf.id))
-                    }
-                    className={`px-space-sm py-space-xs rounded-full font-code-sm text-code-sm transition-colors cursor-pointer border ${
-                      rulePrefixFilter === rf.id
-                        ? 'bg-primary text-white border-primary'
-                        : 'bg-surface-subtle text-on-surface-variant border-border-subtle hover:text-primary hover:bg-surface-container-high'
-                    }`}
+                    onClick={() => {
+                      setSeverityFilter('ALL');
+                      setStatusFilter('ALL');
+                      setRulePrefixFilter('ALL');
+                      setSearchTerm('');
+                    }}
+                    className="font-label-sm text-label-sm text-secondary hover:underline ml-auto font-medium cursor-pointer"
                   >
-                    {rf.label}
+                    Reset Filters
                   </button>
-                ))}
-                <button
-                  onClick={() => {
-                    setSeverityFilter('ALL');
-                    setRulePrefixFilter('ALL');
-                    setSearchTerm('');
-                  }}
-                  className="font-label-sm text-label-sm text-secondary hover:underline ml-auto font-medium cursor-pointer"
-                >
-                  Reset Filters
-                </button>
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Split Workspace: Left Findings Table + Right Rectification Drawer */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
-              {/* Left Column (8 Cols) */}
+              {/* Left Column (8 Cols): Findings Table */}
               <div className="lg:col-span-8 flex flex-col gap-space-xl">
                 <div className="bg-surface-card rounded-xl shadow-sm border border-border-subtle overflow-hidden flex flex-col">
                   <div className="px-space-xl py-space-md bg-surface-card border-b border-border-subtle flex items-center justify-between">
                     <div className="flex items-center gap-space-md">
                       <span className="font-headline-sm text-headline-sm text-primary font-bold">
-                        Explainable Validation Discrepancies
+                        Persisted Validation Discrepancies
                       </span>
                       <span className="font-label-sm text-label-sm bg-surface-subtle text-on-surface-variant px-space-sm py-0.5 rounded-full font-medium border border-border-subtle">
-                        {displayedFindings.length} Visible
+                        {findings.length} Listed
                       </span>
                     </div>
                     <div className="flex items-center gap-space-xs text-outline font-label-sm text-label-sm">
                       <span className="material-symbols-outlined text-[16px] text-status-verified">
                         verified_user
                       </span>
-                      <span>Deterministic Hierarchy</span>
+                      <span>Authoritative Backend Audit</span>
                     </div>
                   </div>
 
@@ -725,98 +652,115 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
                       <thead>
                         <tr className="bg-surface-subtle/50 text-outline font-label-sm text-label-sm uppercase tracking-wider border-b border-border-subtle">
                           <th className="py-space-md px-space-xl w-16">Row</th>
-                          <th className="py-space-md px-space-lg">Student Identifier</th>
+                          <th className="py-space-md px-space-lg">Candidate / Record</th>
                           <th className="py-space-md px-space-lg">Rule &amp; Severity</th>
-                          <th className="py-space-md px-space-lg">Discrepancy Details</th>
-                          <th className="py-space-md px-space-lg text-right">Operational Action</th>
+                          <th className="py-space-md px-space-lg">Field &amp; Cause</th>
+                          <th className="py-space-md px-space-lg text-right">Status / Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border-subtle font-body-sm text-body-sm">
-                        {displayedFindings.length === 0 ? (
+                        {isLoading ? (
                           <tr>
-                            <td colSpan={5} className="py-8 text-center text-outline">
-                              No discrepancies match the active filters.
+                            <td colSpan={5} className="py-12 text-center text-outline">
+                              <span className="material-symbols-outlined text-3xl animate-spin text-secondary block mb-2">
+                                refresh
+                              </span>
+                              <span>Loading authoritative findings from database...</span>
+                            </td>
+                          </tr>
+                        ) : findings.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="py-12 text-center text-outline">
+                              <span className="material-symbols-outlined text-4xl text-outline/50 block mb-2">
+                                task_alt
+                              </span>
+                              <span className="font-semibold block text-base text-on-surface">
+                                No discrepancies match the active filters
+                              </span>
+                              <span className="text-xs text-on-surface-variant block mt-1">
+                                {selectedBatch
+                                  ? `Batch ${selectedBatch.id} has no outstanding findings for the selected filter criteria.`
+                                  : 'Select another batch or reset filters to view findings.'}
+                              </span>
                             </td>
                           </tr>
                         ) : (
-                          displayedFindings.map((item) => {
-                            const isSelected = item.row === activeSelectedRow;
+                          findings.map((item) => {
+                            const isSelected = item.id === activeFindingId;
+                            const isBlocking = item.severity === 'BLOCKING_ERROR';
+                            const isWarning = item.severity === 'WARNING';
+                            const isResolved = item.status === 'RESOLVED' || item.status === 'DISMISSED';
+
                             return (
                               <tr
-                                key={item.row}
-                                onClick={() => handleSelectRow(item.row)}
+                                key={item.id}
+                                onClick={() => setActiveFindingId(item.id)}
                                 className={`transition-colors cursor-pointer ${
                                   isSelected
                                     ? 'ring-2 ring-secondary bg-surface-subtle'
-                                    : item.severity === 'RESOLVED'
-                                    ? 'bg-status-verified-surface/30 hover:bg-status-verified-surface/50'
-                                    : item.severity === 'BLOCKING'
-                                    ? 'bg-status-error-surface/10 hover:bg-status-error-surface/20'
+                                    : isResolved
+                                    ? 'bg-status-verified-surface/20 hover:bg-status-verified-surface/40'
+                                    : isBlocking
+                                    ? 'bg-status-error-surface/10 hover:bg-status-error-surface/25'
                                     : 'hover:bg-surface-subtle/30'
                                 }`}
                               >
                                 <td className="py-space-lg px-space-xl font-code-sm text-code-sm font-semibold text-outline">
-                                  #{item.row}
+                                  {item.row_number ? `#${item.row_number}` : '—'}
                                 </td>
                                 <td className="py-space-lg px-space-lg">
                                   <div className="flex flex-col">
                                     <span className="font-code-sm text-code-sm font-bold text-primary">
-                                      {item.studentId}
+                                      {item.record_id || item.batch_id}
                                     </span>
                                     <span className="font-body-sm text-body-sm text-outline mt-0.5">
-                                      {item.branch}
+                                      Batch: {item.batch_id}
                                     </span>
                                   </div>
                                 </td>
                                 <td className="py-space-lg px-space-lg">
                                   <div className="flex flex-col gap-space-xs items-start">
-                                    {item.severity === 'RESOLVED' && (
+                                    {isResolved && (
                                       <span className="inline-flex items-center gap-1 font-label-sm text-label-sm px-space-xs py-0.5 rounded-md bg-status-verified-surface text-status-verified font-bold border border-status-verified-border">
                                         <span className="material-symbols-outlined text-[13px]">
                                           check_circle
                                         </span>
-                                        Resolved
+                                        {item.status}
                                       </span>
                                     )}
-                                    {item.severity === 'BLOCKING' && (
+                                    {!isResolved && isBlocking && (
                                       <span className="inline-flex items-center gap-1 font-label-sm text-label-sm px-space-xs py-0.5 rounded-md bg-status-error-surface text-status-error font-semibold border border-status-error-border">
                                         <span className="material-symbols-outlined text-[13px]">
                                           cancel
                                         </span>
-                                        Blocking
+                                        BLOCKING
                                       </span>
                                     )}
-                                    {item.severity === 'WARNING' && (
+                                    {!isResolved && isWarning && (
                                       <span className="inline-flex items-center gap-1 font-label-sm text-label-sm px-space-xs py-0.5 rounded-md bg-status-review-surface text-status-review font-semibold border border-status-review-border">
                                         <span className="material-symbols-outlined text-[13px]">
                                           warning
                                         </span>
-                                        Warning
+                                        WARNING
                                       </span>
                                     )}
                                     <span className="font-code-sm text-code-sm text-on-surface-variant">
-                                      {item.rule}
+                                      {item.rule_code}
                                     </span>
                                   </div>
                                 </td>
                                 <td className="py-space-lg px-space-lg max-w-xs">
                                   <div className="flex flex-col gap-0.5">
                                     <span className="font-code-sm text-code-sm font-semibold text-primary">
-                                      {item.field}
+                                      {item.field_name || 'record'}
                                     </span>
-                                    <span className="text-on-surface-variant font-body-sm text-body-sm">
-                                      {item.resolvedValue ? (
-                                        <span className="text-status-verified font-mono font-semibold">
-                                          ✓ Corrected: {item.resolvedValue}
-                                        </span>
-                                      ) : (
-                                        item.explanation
-                                      )}
+                                    <span className="text-on-surface-variant font-body-sm text-body-sm line-clamp-2" title={item.message}>
+                                      {item.message}
                                     </span>
                                   </div>
                                 </td>
                                 <td className="py-space-lg px-space-lg text-right">
-                                  {item.severity === 'RESOLVED' ? (
+                                  {isResolved ? (
                                     <span className="text-status-verified text-xs font-semibold inline-flex items-center gap-1">
                                       <span className="material-symbols-outlined text-[16px]">
                                         verified
@@ -827,10 +771,10 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleSelectRow(item.row);
+                                        setActiveFindingId(item.id);
                                       }}
                                       className={`px-space-md py-space-xs rounded-lg text-label-md font-label-md transition-colors shadow-sm inline-flex items-center gap-1.5 cursor-pointer ${
-                                        item.severity === 'BLOCKING'
+                                        isBlocking
                                           ? 'bg-primary text-on-primary hover:bg-navy-deep'
                                           : 'bg-surface-subtle text-primary hover:bg-surface-container-high border border-border-subtle'
                                       }`}
@@ -838,9 +782,7 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
                                       <span className="material-symbols-outlined text-[15px]">
                                         edit
                                       </span>
-                                      <span>
-                                        {item.severity === 'BLOCKING' ? 'Fix Field' : 'Verify'}
-                                      </span>
+                                      <span>{isBlocking ? 'Remediate' : 'Review'}</span>
                                     </button>
                                   )}
                                 </td>
@@ -854,69 +796,69 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
 
                   <div className="px-space-xl py-space-md bg-surface-card flex items-center justify-between text-body-sm font-body-sm text-outline border-t border-border-subtle">
                     <span>
-                      Showing findings 1-{displayedFindings.length} of 28
+                      Showing {findings.length} findings for active query
                     </span>
                     <div className="flex items-center gap-space-xs">
-                      <span className="px-space-md py-space-xs bg-primary text-on-primary rounded-lg font-bold text-label-sm">
-                        1
+                      <span className="font-code-sm text-code-sm text-on-surface">
+                        Deterministic Rules Engine v2.4
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* National Academic Rule Architecture Cards */}
+                {/* Rule Specifications & Architecture Panel */}
                 <div className="bg-surface-card rounded-xl p-space-xl shadow-sm border border-border-subtle">
                   <div className="flex items-center justify-between mb-space-md">
                     <span className="font-headline-sm text-headline-sm text-primary font-bold flex items-center gap-space-xs">
                       <span className="material-symbols-outlined text-secondary text-[20px]">
                         menu_book
                       </span>
-                      <span>National Academic Rule Architecture</span>
+                      <span>National Academic Rule Specifications</span>
                     </span>
                     <span className="font-label-sm text-label-sm text-outline font-code-sm">
-                      v2.4 Spec
+                      AICTE/NAD-2026 Mandate
                     </span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-space-md">
                     <div className="p-space-md rounded-lg border border-border-subtle bg-surface-subtle/30">
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-code-sm text-code-sm font-bold text-primary">
-                          RULE-R6 / R5
+                          APAAR Identifier Rules
                         </span>
                         <span className="font-label-sm text-label-sm text-status-error font-bold">
                           Blocking
                         </span>
                       </div>
                       <p className="text-on-surface-variant font-body-sm text-body-sm">
-                        Identity verification requirement. Valid 12-digit verifiable APAAR required.
+                        Syntax validation (12 digits, Verhoeff checksum) and intra-batch uniqueness. Missing or invalid APAAR blocks submission.
                       </p>
                     </div>
 
                     <div className="p-space-md rounded-lg border border-border-subtle bg-surface-subtle/30">
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-code-sm text-code-sm font-bold text-primary">
-                          RULE-R7
+                          Approved Intake Ceilings
                         </span>
                         <span className="font-label-sm text-label-sm text-status-error font-bold">
                           Blocking
                         </span>
                       </div>
                       <p className="text-on-surface-variant font-body-sm text-body-sm">
-                        Sanction Limits. Enrolment exceeding AICTE approved intake ceiling blocked.
+                        Enrolment cannot breach sanctioned regular and supernumerary quotas without official AICTE variation approvals.
                       </p>
                     </div>
 
                     <div className="p-space-md rounded-lg border border-border-subtle bg-surface-subtle/30">
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-code-sm text-code-sm font-bold text-primary">
-                          RULE-R4 / R8
+                          Cross-Match &amp; Gateway
                         </span>
                         <span className="font-label-sm text-label-sm text-status-review font-bold">
                           Warning
                         </span>
                       </div>
                       <p className="text-on-surface-variant font-body-sm text-body-sm">
-                        Lapses &amp; Gateway retries. Permits provisional import subject to 15-day affidavit.
+                        Cross-institutional collision flags and gateway availability probes require institutional documentation or clerical review.
                       </p>
                     </div>
                   </div>
@@ -933,178 +875,207 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
                       </div>
                       <div className="flex flex-col">
                         <span className="font-headline-sm text-headline-sm text-primary font-bold">
-                          Discrepancy Rectification
+                          Finding Inspection
                         </span>
                         <span className="font-body-sm text-body-sm text-outline">
-                          Targeting: Row #{activeFinding.row}
+                          {activeFinding
+                            ? `Row ${activeFinding.row_number || 'N/A'} • ${activeFinding.rule_code}`
+                            : 'Select a finding to inspect'}
                         </span>
                       </div>
                     </div>
                     <span className="font-code-sm text-code-sm bg-surface-subtle text-on-surface-variant px-space-xs py-1 rounded border border-border-subtle">
-                      INSPECTION
+                      AUDIT
                     </span>
                   </div>
 
-                  <div className="p-space-xl flex flex-col gap-space-lg">
-                    {/* Student Metadata Card */}
-                    <div className="p-space-md bg-surface-subtle/60 rounded-xl border border-border-subtle flex flex-col gap-space-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-label-sm text-label-sm text-outline uppercase font-semibold">
-                          Student
-                        </span>
-                        <span className="font-code-sm text-code-sm font-bold text-primary">
-                          {activeFinding.studentId}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="font-label-sm text-label-sm text-outline uppercase font-semibold">
-                          Name
-                        </span>
-                        <span className="font-body-md text-body-md text-on-surface font-semibold">
-                          {activeFinding.name}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="font-label-sm text-label-sm text-outline uppercase font-semibold">
-                          Trigger
-                        </span>
-                        <span className="font-code-sm text-code-sm text-status-error font-semibold">
-                          {activeFinding.rule}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Root-cause box */}
-                    <div className="bg-status-error-surface/40 p-space-md rounded-xl border border-status-error-border flex flex-col gap-space-xs">
-                      <div className="flex items-center gap-1.5 text-status-error font-label-md text-label-md font-bold">
-                        <span className="material-symbols-outlined text-[16px]">info</span>
-                        <span>Root-Cause Explanation:</span>
-                      </div>
-                      <p className="font-body-sm text-body-sm text-on-surface">
-                        {activeFinding.explanation}
-                      </p>
-                      <div className="bg-surface-card p-space-sm rounded-lg border border-border-subtle mt-1 text-label-sm font-label-sm">
-                        <span className="text-outline block">Recommended Solution:</span>
-                        <span className="text-primary font-medium mt-0.5 block">
-                          {activeFinding.suggestedAction}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Rectify Input Form */}
-                    <div className="flex flex-col gap-space-xs">
-                      <label
-                        className="font-label-md text-label-md text-on-surface font-semibold flex items-center justify-between"
-                        htmlFor="inputFieldVal"
-                      >
-                        <span>{activeFinding.inputLabel}</span>
-                        <span className="font-code-sm text-code-sm text-outline font-normal">
-                          {activeFinding.inputHint}
-                        </span>
-                      </label>
-                      <div className="relative">
-                        <input
-                          id="inputFieldVal"
-                          type="text"
-                          value={inputVal}
-                          onChange={(e) => setInputVal(e.target.value)}
-                          placeholder={activeFinding.placeholder}
-                          maxLength={32}
-                          className="w-full px-space-md py-space-sm bg-surface-card border border-border-strong rounded-lg font-code-sm text-code-sm text-primary tracking-wider focus:outline-none focus:ring-2 focus:ring-secondary text-base"
-                        />
-                        <div className="absolute right-3 top-3 flex items-center">
-                          {validationState.status === 'valid' && (
-                            <span className="material-symbols-outlined text-status-verified text-[18px]">
-                              check_circle
-                            </span>
-                          )}
-                          {validationState.status === 'error' && (
-                            <span className="material-symbols-outlined text-status-error text-[18px]">
-                              error
-                            </span>
-                          )}
-                          {validationState.status === 'review' && (
-                            <span className="material-symbols-outlined text-status-review text-[18px]">
-                              pending
-                            </span>
-                          )}
-                          {validationState.status === 'empty' && (
-                            <span className="material-symbols-outlined text-outline text-[18px]">
-                              edit_note
-                            </span>
-                          )}
+                  {activeFinding ? (
+                    <div className="p-space-xl flex flex-col gap-space-lg">
+                      {/* Finding Metadata Card */}
+                      <div className="p-space-md bg-surface-subtle/60 rounded-xl border border-border-subtle flex flex-col gap-space-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-label-sm text-label-sm text-outline uppercase font-semibold">
+                            Finding ID
+                          </span>
+                          <span className="font-code-sm text-code-sm font-bold text-primary">
+                            {activeFinding.id}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-label-sm text-label-sm text-outline uppercase font-semibold">
+                            Affected Field
+                          </span>
+                          <span className="font-code-sm text-code-sm font-semibold text-on-surface">
+                            {activeFinding.field_name || 'Record-level'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-label-sm text-label-sm text-outline uppercase font-semibold">
+                            Rule Code
+                          </span>
+                          <span className="font-code-sm text-code-sm font-bold text-primary">
+                            {activeFinding.rule_code}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-label-sm text-label-sm text-outline uppercase font-semibold">
+                            Severity
+                          </span>
+                          <span
+                            className={`font-label-sm text-label-sm font-bold px-2 py-0.5 rounded ${
+                              activeFinding.severity === 'BLOCKING_ERROR'
+                                ? 'bg-status-error-surface text-status-error'
+                                : 'bg-status-review-surface text-status-review'
+                            }`}
+                          >
+                            {activeFinding.severity}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-label-sm text-label-sm text-outline uppercase font-semibold">
+                            Status
+                          </span>
+                          <span className="font-label-sm text-label-sm font-bold text-status-verified">
+                            {activeFinding.status}
+                          </span>
                         </div>
                       </div>
 
-                      {/* Live Feedback Message */}
+                      {/* Explanation & Suggested Action */}
                       <div
-                        className={`p-space-xs rounded text-label-sm font-label-sm flex items-center gap-space-xs ${
-                          validationState.status === 'valid'
-                            ? 'bg-status-verified-surface text-status-verified font-semibold'
-                            : validationState.status === 'error'
-                            ? 'bg-status-error-surface text-status-error font-semibold'
-                            : validationState.status === 'review'
-                            ? 'bg-status-review-surface text-status-review'
-                            : 'bg-surface-subtle text-outline'
+                        className={`p-space-md rounded-xl border flex flex-col gap-space-xs ${
+                          activeFinding.severity === 'BLOCKING_ERROR'
+                            ? 'bg-status-error-surface/40 border-status-error-border'
+                            : 'bg-status-review-surface/40 border-status-review-border'
                         }`}
                       >
-                        <span className="material-symbols-outlined text-[14px]">checklist</span>
-                        <span>{validationState.msg}</span>
+                        <div
+                          className={`flex items-center gap-1.5 font-label-md text-label-md font-bold ${
+                            activeFinding.severity === 'BLOCKING_ERROR'
+                              ? 'text-status-error'
+                              : 'text-status-review'
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">info</span>
+                          <span>Explanation:</span>
+                        </div>
+                        <p className="font-body-sm text-body-sm text-on-surface">
+                          {activeFinding.message}
+                        </p>
+                        {activeFinding.suggested_action && (
+                          <div className="bg-surface-card p-space-sm rounded-lg border border-border-subtle mt-1 text-label-sm font-label-sm">
+                            <span className="text-outline block font-semibold">Recommended Corrective Action:</span>
+                            <span className="text-primary font-medium mt-0.5 block">
+                              {activeFinding.suggested_action}
+                            </span>
+                          </div>
+                        )}
+                        {(activeFinding.expected_value || activeFinding.actual_value) && (
+                          <div className="grid grid-cols-2 gap-2 mt-1 text-xs font-mono">
+                            <div className="bg-surface-card p-2 rounded border border-border-subtle">
+                              <span className="text-outline block text-[10px] uppercase font-sans">Expected:</span>
+                              <span className="text-status-verified font-bold">{activeFinding.expected_value || 'Valid value'}</span>
+                            </div>
+                            <div className="bg-surface-card p-2 rounded border border-border-subtle">
+                              <span className="text-outline block text-[10px] uppercase font-sans">Observed:</span>
+                              <span className="text-status-error font-bold">{activeFinding.actual_value || 'None'}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Regulatory Notice on In-Place Rectification */}
+                      <div className="bg-surface-subtle p-3 rounded-lg border border-border-subtle text-xs text-on-surface-variant flex items-start gap-2">
+                        <span className="material-symbols-outlined text-secondary text-base shrink-0 mt-0.5">
+                          policy
+                        </span>
+                        <div>
+                          <span className="font-semibold text-primary block">Data Rectification Mandate:</span>
+                          To permanently correct student records, modify your source CSV and re-upload via Bulk Import &amp; Validation. To resolve explainable discrepancies with administrative justification, submit a signed audit decision below.
+                        </div>
+                      </div>
+
+                      {/* Audit Justification Input */}
+                      {activeFinding.status === 'OPEN' && (
+                        <div className="flex flex-col gap-space-xs">
+                          <label
+                            className="font-label-md text-label-md text-on-surface-variant font-semibold"
+                            htmlFor="auditNote"
+                          >
+                            Audit Trail Justification / Document Reference
+                          </label>
+                          <textarea
+                            id="auditNote"
+                            rows={3}
+                            value={auditNote}
+                            onChange={(e) => setAuditNote(e.target.value)}
+                            placeholder="Enter administrative justification, affidavit reference, or reason for remediation..."
+                            className="w-full p-space-sm bg-surface-card border border-border-subtle rounded-lg text-body-sm font-body-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-secondary placeholder-outline"
+                          />
+                        </div>
+                      )}
+
+                      {/* Drawer Action Buttons */}
+                      {activeFinding.status === 'OPEN' ? (
+                        <div className="flex flex-col gap-space-sm pt-space-xs">
+                          <button
+                            onClick={() => handleResolveFinding('RESOLVED')}
+                            disabled={isResolving}
+                            className="w-full py-space-sm px-space-md bg-primary text-on-primary rounded-lg font-title-md text-title-md font-semibold hover:bg-navy-deep disabled:opacity-50 transition-all shadow-sm flex items-center justify-center gap-space-xs cursor-pointer"
+                          >
+                            <span className={`material-symbols-outlined text-[18px] ${isResolving ? 'animate-spin' : ''}`}>
+                              {isResolving ? 'hourglass_top' : 'check_circle'}
+                            </span>
+                            <span>{isResolving ? 'Recording...' : 'Mark as Remediated'}</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleResolveFinding('DISMISSED')}
+                            disabled={isResolving}
+                            className="w-full py-space-xs px-space-md bg-surface-subtle text-primary hover:bg-surface-container-high rounded-lg font-label-md text-label-md transition-colors flex items-center justify-center gap-space-xs border border-border-subtle cursor-pointer disabled:opacity-50"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">
+                              rule_folder
+                            </span>
+                            <span>Dismiss with Administrative Note</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-status-verified-surface rounded-lg border border-status-verified-border text-center text-status-verified font-semibold text-sm flex items-center justify-center gap-2">
+                          <span className="material-symbols-outlined text-[18px]">verified</span>
+                          <span>Finding marked as {activeFinding.status}</span>
+                        </div>
+                      )}
+
+                      {/* Cross Page Navigation in Drawer */}
+                      <div className="pt-space-sm border-t border-border-subtle flex flex-col gap-2">
+                        <span className="text-xs text-outline font-semibold uppercase">Cross-Page Navigation:</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => onNavigateTab?.('import', activeFinding.batch_id)}
+                            className="px-2 py-1.5 text-xs font-semibold rounded bg-surface-subtle text-primary hover:bg-surface-card border border-border-subtle text-left truncate flex items-center gap-1 cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">upload_file</span>
+                            <span>Ingestion Page</span>
+                          </button>
+                          <button
+                            onClick={() => onNavigateTab?.('history', activeFinding.batch_id)}
+                            className="px-2 py-1.5 text-xs font-semibold rounded bg-surface-subtle text-primary hover:bg-surface-card border border-border-subtle text-left truncate flex items-center gap-1 cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">history</span>
+                            <span>Import History</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
-
-                    {/* Audit Trail Justification */}
-                    <div className="flex flex-col gap-space-xs">
-                      <label
-                        className="font-label-md text-label-md text-on-surface-variant font-semibold"
-                        htmlFor="auditNote"
-                      >
-                        Audit Trail Justification
-                      </label>
-                      <textarea
-                        id="auditNote"
-                        rows={2}
-                        value={auditNote}
-                        onChange={(e) => setAuditNote(e.target.value)}
-                        placeholder="Reference student DigiLocker verified affidavit or dispatch number..."
-                        className="w-full p-space-sm bg-surface-card border border-border-subtle rounded-lg text-body-sm font-body-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-secondary placeholder-outline"
-                      />
+                  ) : (
+                    <div className="p-12 text-center text-outline">
+                      <span className="material-symbols-outlined text-4xl block mb-2 text-outline/40">
+                        find_in_page
+                      </span>
+                      <span>Select a discrepancy row on the left to inspect root-cause analysis and execute remediation.</span>
                     </div>
-
-                    {/* Drawer Action Buttons */}
-                    <div className="flex flex-col gap-space-sm pt-space-xs">
-                      <button
-                        onClick={handleApplyCorrection}
-                        disabled={!validationState.isValid}
-                        className="w-full py-space-sm px-space-md bg-primary text-on-primary rounded-lg font-title-md text-title-md font-semibold hover:bg-navy-deep disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center gap-space-xs cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">
-                          check_circle
-                        </span>
-                        <span>Save &amp; Re-evaluate Finding</span>
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          showToast(
-                            'Escalated to Registrar Desk',
-                            `Ticket #REG-${activeSelectedRow}-DISPATCH dispatched with encrypted row payload.`
-                          )
-                        }
-                        className="w-full py-space-xs px-space-md bg-surface-subtle text-primary hover:bg-surface-container-high rounded-lg font-label-md text-label-md transition-colors flex items-center justify-center gap-space-xs border border-border-subtle cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">
-                          forward_to_inbox
-                        </span>
-                        <span>Escalate to Registrar Desk</span>
-                      </button>
-                    </div>
-
-                    <div className="pt-space-sm border-t border-border-subtle flex items-center justify-between text-label-sm font-label-sm text-outline">
-                      <span>Auditor: NIT-TRICHY-ADM</span>
-                      <span>SHA256 Signed</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1117,20 +1088,38 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-space-md">
           {/* Left Warning Callout */}
           <div className="flex items-center gap-space-sm">
-            <div className="w-9 h-9 rounded bg-status-error-surface text-status-error flex items-center justify-center flex-shrink-0">
-              <span className="material-symbols-outlined text-[22px]">gavel</span>
+            <div
+              className={`w-9 h-9 rounded flex items-center justify-center flex-shrink-0 ${
+                blockingCount > 0
+                  ? 'bg-status-error-surface text-status-error'
+                  : 'bg-status-verified-surface text-status-verified'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[22px]">
+                {blockingCount > 0 ? 'gavel' : 'verified'}
+              </span>
             </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-space-xs">
                 <span className="font-title-md text-title-md text-primary font-bold">
-                  {blockingCount} Blocking Errors Outstanding
+                  {blockingCount > 0
+                    ? `${blockingCount} Blocking Errors Active`
+                    : 'Zero Blocking Errors Active'}
                 </span>
-                <span className="font-label-sm text-label-sm px-1.5 py-0.5 rounded bg-status-error-surface text-status-error font-semibold">
-                  Strict Regulatory Block
+                <span
+                  className={`font-label-sm text-label-sm px-1.5 py-0.5 rounded font-semibold ${
+                    blockingCount > 0
+                      ? 'bg-status-error-surface text-status-error'
+                      : 'bg-status-verified-surface text-status-verified'
+                  }`}
+                >
+                  {blockingCount > 0 ? 'Strict Regulatory Block' : 'Ready for Final Submission'}
                 </span>
               </div>
               <span className="font-body-sm text-body-sm text-on-surface-variant">
-                All blocking errors must be resolved or justified under AICTE Sovereign Academic Standard before final ingestion sync.
+                {blockingCount > 0
+                  ? 'All blocking errors must be rectified in source data or resolved before final batch submission to AICTE.'
+                  : 'All student records in active batch conform to AICTE statutory intake and identifier policies.'}
               </span>
             </div>
           </div>
@@ -1139,42 +1128,56 @@ export const DataQualityFindingsPage: React.FC<DataQualityFindingsPageProps> = (
           <div className="flex items-center gap-space-sm w-full md:w-auto justify-end flex-wrap">
             <button
               onClick={handleExportCSV}
-              className="px-space-md py-space-sm bg-surface-subtle text-primary hover:bg-surface-container-high rounded font-title-md text-title-md font-semibold transition-colors flex items-center gap-space-xs border border-border-subtle cursor-pointer"
+              disabled={isExporting}
+              className="px-space-md py-space-sm bg-surface-subtle text-primary hover:bg-surface-container-high rounded font-title-md text-title-md font-semibold transition-colors flex items-center gap-space-xs border border-border-subtle cursor-pointer disabled:opacity-50"
             >
               <span className="material-symbols-outlined text-[18px]">file_download</span>
-              <span>Export Findings CSV</span>
+              <span>Export CSV</span>
             </button>
 
             <button
-              onClick={handleFullReeval}
+              onClick={() => onNavigateTab?.('import', selectedBatchId || undefined)}
               className="px-space-md py-space-sm bg-surface-subtle text-primary hover:bg-surface-container-high rounded font-title-md text-title-md font-semibold transition-colors flex items-center gap-space-xs border border-border-subtle cursor-pointer"
             >
-              <span className="material-symbols-outlined text-[18px]">rule</span>
-              <span>Run Revalidation Checks</span>
+              <span className="material-symbols-outlined text-[18px]">upload_file</span>
+              <span>Open Bulk Ingestion</span>
             </button>
 
             <button
-              disabled={blockingCount > 0}
-              onClick={() => {
-                showToast(
-                  'Payload Synchronized',
-                  'Batch #BATCH-2025-NITTRICHY-004 submitted to AICTE Central Sovereign Depository.'
-                );
-              }}
-              title={
-                blockingCount > 0
-                  ? `Resolve ${blockingCount} blocking errors to unlock submission`
-                  : 'Ready to submit to AICTE Repository'
-              }
-              className={`px-space-lg py-space-sm rounded font-headline-sm text-headline-sm font-semibold transition-all flex items-center gap-space-xs shadow-sm cursor-pointer ${
-                blockingCount > 0
-                  ? 'bg-primary text-on-primary opacity-40 cursor-not-allowed'
-                  : 'bg-status-verified text-white hover:bg-status-verified/90'
-              }`}
+              onClick={() => onNavigateTab?.('reports', selectedBatchId || undefined)}
+              className="px-space-md py-space-sm bg-surface-subtle text-primary hover:bg-surface-container-high rounded font-title-md text-title-md font-semibold transition-colors flex items-center gap-space-xs border border-border-subtle cursor-pointer"
             >
-              <span className="material-symbols-outlined text-[20px]">cloud_upload</span>
-              <span>Submit Batch to AICTE Repository</span>
+              <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+              <span>Audit Logs</span>
             </button>
+
+            {selectedBatch && (selectedBatch.status === 'VALIDATED' || selectedBatch.status === 'DRAFT') && (
+              <button
+                disabled={blockingCount > 0}
+                onClick={async () => {
+                  try {
+                    await batchService.submitBatch(selectedBatch.id, true);
+                    showToast('Submission Complete', `Batch ${selectedBatch.id} locked and submitted to Central Review.`);
+                    await loadFindings();
+                  } catch (err: any) {
+                    showToast('Submission Rejected', err.message || 'Cannot submit batch', 'ERROR');
+                  }
+                }}
+                title={
+                  blockingCount > 0
+                    ? `Resolve ${blockingCount} blocking errors to unlock submission`
+                    : 'Submit batch to Central Review'
+                }
+                className={`px-space-lg py-space-sm rounded font-headline-sm text-headline-sm font-semibold transition-all flex items-center gap-space-xs shadow-sm cursor-pointer ${
+                  blockingCount > 0
+                    ? 'bg-primary text-on-primary opacity-40 cursor-not-allowed'
+                    : 'bg-status-verified text-white hover:bg-status-verified/90'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[20px]">cloud_upload</span>
+                <span>Submit to AICTE Central Review</span>
+              </button>
+            )}
           </div>
         </div>
       </footer>

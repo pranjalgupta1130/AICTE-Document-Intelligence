@@ -43,7 +43,7 @@ export const App: React.FC = () => {
   const handleSwitchTab = (tab: string, param?: string) => {
     if (tab === 'records' && param) {
       setSelectedApaarId(param);
-    } else if (tab === 'history' && param) {
+    } else if (param) {
       setSelectedBatchId(param);
     }
     setCurrentTab(tab);
@@ -64,6 +64,7 @@ export const App: React.FC = () => {
       return (
         <BulkImportValidationPage
           session={session}
+          initialBatchId={selectedBatchId}
           onLogout={handleLogout}
           onNavigateTab={handleSwitchTab}
         />
@@ -85,6 +86,7 @@ export const App: React.FC = () => {
       return (
         <DataQualityFindingsPage
           session={session}
+          initialBatchId={selectedBatchId}
           onLogout={handleLogout}
           onNavigateTab={handleSwitchTab}
         />
@@ -95,6 +97,7 @@ export const App: React.FC = () => {
       return (
         <AuditLogsReportsPage
           session={session}
+          initialBatchId={selectedBatchId}
           onLogout={handleLogout}
           onNavigateTab={handleSwitchTab}
         />

@@ -1,9 +1,18 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AuthSession } from '../types/auth';
-import { batchService, institutionService, InstitutionItem, BackendValidationSummary } from '../services/api';
+import {
+  batchService,
+  institutionService,
+  reportService,
+  InstitutionItem,
+  BatchItem,
+  BackendValidationSummary,
+  BackendFinding,
+} from '../services/api';
 
 interface BulkImportValidationPageProps {
   session?: AuthSession | null;
+  initialBatchId?: string | null;
   onLogout?: () => void;
   onNavigateTab?: (tab: string, param?: string) => void;
 }
@@ -17,92 +26,49 @@ interface DiagnosticRecord {
   note: string;
 }
 
-const INITIAL_DIAGNOSTICS: DiagnosticRecord[] = [
-  {
-    row: 14,
-    studentId: 'NITT-2025-014',
-    apaarId: '9082-1144-8821',
-    category: 'REGULAR',
-    status: 'VALID',
-    note: 'Format OK • Syntactic checksum verified against Mock APAAR Adapter (Simulated • is_official=False)',
-  },
-  {
-    row: 28,
-    studentId: 'NITT-2025-028',
-    apaarId: '9082-4412-8821',
-    category: 'REGULAR',
-    status: 'VALID',
-    note: 'Simulated verification via Mock APAAR Adapter (Siddharth R. Iyer • is_official=False)',
-  },
-  {
-    row: 42,
-    studentId: 'NITT-2025-042',
-    apaarId: '[NULL / EMPTY]',
-    category: 'EWS',
-    status: 'BLOCKING',
-    note: 'Field Required by Rule R6 - Mandatory APAAR Identifier Non-Null',
-  },
-  {
-    row: 61,
-    studentId: 'NITT-2025-061',
-    apaarId: '[MALFORMED_REGEX]',
-    category: 'TFW',
-    status: 'BLOCKING',
-    note: 'Syntactic constraint violation: Expected 12-digit format (xxxx-xxxx-xxxx)',
-  },
-  {
-    row: 77,
-    studentId: 'NITT-2025-077',
-    apaarId: '8129-3321-9011',
-    category: 'REGULAR',
-    status: 'DUPLICATE',
-    note: 'Collision with Row 108: APAAR Re-assignment Disallowed across records',
-  },
-  {
-    row: 108,
-    studentId: 'NITT-2025-108',
-    apaarId: '8129-3321-9011',
-    category: 'REGULAR',
-    status: 'DUPLICATE',
-    note: 'Collision with Row 77: In-batch duplicate assignment rejected under Rule R11',
-  },
-  {
-    row: 115,
-    studentId: 'NITT-2025-115',
-    apaarId: '3488-2910-4491',
-    category: 'NRI',
-    status: 'WARNING',
-    note: 'Rule R4: INCONSISTENT_CATEGORY (NRI requires Passport / OCI Ref)',
-  },
-  {
-    row: 142,
-    studentId: 'NITT-2025-142',
-    apaarId: '5510-9921-3841',
-    category: 'SUPERNUMERARY',
-    status: 'WARNING',
-    note: 'Rule R8: PMSSS quota verification pending state nodality endorsement',
-  },
-];
+function mapFindingsToDiagnostics(findings: BackendFinding[]): DiagnosticRecord[] {
+  return findings.map((f, idx) => {
+    let status: 'VALID' | 'BLOCKING' | 'DUPLICATE' | 'WARNING' = 'VALID';
+    if (f.severity === 'BLOCKING_ERROR') {
+      status = f.rule_code.includes('DUP') ? 'DUPLICATE' : 'BLOCKING';
+    } else if (f.severity === 'WARNING') {
+      status = 'WARNING';
+    }
+
+    return {
+      row: f.row_number || idx + 1,
+      studentId: f.record_id ? f.record_id.substring(0, 16) : (f.actual_value || `ROW-${f.row_number || idx + 1}`),
+      apaarId: f.field_name === 'apaar_id' ? f.actual_value || '[N/A]' : (f.actual_value || '[N/A]'),
+      category: f.field_name ? f.field_name.toUpperCase() : 'VALIDATION',
+      status,
+      note: `${f.rule_code}: ${f.message}${f.suggested_action ? ` • Recommendation: ${f.suggested_action}` : ''}`,
+    };
+  });
+}
 
 export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> = ({
   session,
+  initialBatchId,
   onLogout,
   onNavigateTab,
 }) => {
   const [filterType, setFilterType] = useState<string>('ALL');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showComplianceModal, setShowComplianceModal] = useState<boolean>(false);
-  const [diagnosticsList, setDiagnosticsList] = useState<DiagnosticRecord[]>(INITIAL_DIAGNOSTICS);
+  const [diagnosticsList, setDiagnosticsList] = useState<DiagnosticRecord[]>([]);
 
   // Live Batch Processing States
-  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(initialBatchId || null);
+  const [activeBatch, setActiveBatch] = useState<BatchItem | null>(null);
+  const [availableBatches, setAvailableBatches] = useState<BatchItem[]>([]);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [uploadedFileSize, setUploadedFileSize] = useState<string | null>(null);
   const [isLiveBatch, setIsLiveBatch] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [isValidating, setIsValidating] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [totalRowsCount, setTotalRowsCount] = useState<number>(1420);
+  const [totalRowsCount, setTotalRowsCount] = useState<number>(0);
   const [validationSummary, setValidationSummary] = useState<BackendValidationSummary | null>(null);
 
   const [ingestionSummary, setIngestionSummary] = useState<{
@@ -132,6 +98,89 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
       roleTitle.includes('REVIEWER')
     );
   }, [session?.role, session?.roleTitle]);
+
+  // Helper to load a specific batch by ID
+  const loadBatchData = async (batchId: string) => {
+    try {
+      const b = await batchService.getBatch(batchId);
+      setActiveBatch(b);
+      setActiveBatchId(b.id);
+      setUploadedFileName(b.source_filename);
+      setUploadedFileSize(b.file_size_bytes ? `${(b.file_size_bytes / (1024 * 1024)).toFixed(2)} MB` : '1.4 MB');
+      setTotalRowsCount(b.total_rows);
+      setIsLiveBatch(true);
+
+      setValidationSummary({
+        total_records: b.total_rows,
+        valid_records: b.valid_rows,
+        error_count: b.error_rows,
+        warning_count: b.warning_rows,
+        info_count: 0,
+        intake_exceeded_count: 0,
+        duplicate_candidate_count: 0,
+      });
+
+      const findingsRes = await batchService.getBatchFindings(batchId, 150);
+      if (findingsRes.items && findingsRes.items.length > 0) {
+        setDiagnosticsList(mapFindingsToDiagnostics(findingsRes.items));
+      } else if (b.valid_rows === b.total_rows && b.total_rows > 0) {
+        setDiagnosticsList([
+          {
+            row: 1,
+            studentId: 'ALL_RECORDS',
+            apaarId: 'VERIFIED',
+            category: 'COHORT',
+            status: 'VALID',
+            note: `All ${b.total_rows} ingested records passed checksum, syntax, and intake reconciliation checks.`,
+          },
+        ]);
+      } else {
+        setDiagnosticsList([]);
+      }
+    } catch (err: any) {
+      console.error('Failed to load batch data:', err);
+      showToast(`Error loading batch ${batchId}: ${err?.message || 'Server error'}`);
+    }
+  };
+
+  // Fetch available batches on mount or institution change
+  useEffect(() => {
+    let isMounted = true;
+    const effectiveInst =
+      targetInstitutionId ||
+      (session?.instCode && session.instCode !== 'HQ-STATUTORY-DELHI' ? session.instCode : undefined);
+
+    batchService
+      .listBatches({ institution_id: effectiveInst, limit: 30 })
+      .then((res) => {
+        if (!isMounted) return;
+        const items = res.items || [];
+        setAvailableBatches(items);
+
+        if (items.length > 0) {
+          const selected = initialBatchId
+            ? items.find((b) => b.id === initialBatchId) || items[0]
+            : items[0];
+          loadBatchData(selected.id);
+        } else {
+          setActiveBatch(null);
+          setActiveBatchId(null);
+          setUploadedFileName(null);
+          setUploadedFileSize(null);
+          setTotalRowsCount(0);
+          setValidationSummary(null);
+          setDiagnosticsList([]);
+          setIsLiveBatch(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to list batches:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [targetInstitutionId, session?.instCode, initialBatchId]);
 
   // Fetch available institutions for administrative users
   useEffect(() => {
@@ -172,58 +221,33 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
     }, 3500);
   };
 
-  const handleDownloadTemplate = () => {
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [
-        'apaar_id,institution_student_id,student_name,academic_year,programme_id,enrolment_status,seat_type,is_nri,is_oci,is_fn',
-        '9082-1144-8821,STU-2026-001,Aarav Sharma,2026-2027,PROG-001-CSE,ENROLLED,REGULAR,FALSE,FALSE,FALSE',
-        '9082-4412-8821,STU-2026-002,Diya Patel,2026-2027,PROG-001-CSE,ENROLLED,SUPERNUMERARY_EWS,FALSE,FALSE,FALSE',
-        '8812-7491-1029,STU-2026-003,Rohan Verma,2026-2027,PROG-001-ECE,ENROLLED,REGULAR,FALSE,FALSE,FALSE',
-      ].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', 'AICTE_APAAR_Batch_Template_v2.4.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('Downloaded official AICTE APAAR Batch Template (.CSV)');
-  };
-
-  const sanitizeCsvValue = (val: string | number): string => {
-    const s = String(val ?? '');
-    if (s.length > 0 && ['=', '+', '-', '@', '|', '%'].includes(s[0])) {
-      return `'\t${s}`;
+  // Download official CSV template from backend
+  const handleDownloadTemplate = async () => {
+    try {
+      showToast('Downloading official AICTE template from server...');
+      await reportService.downloadTemplateCsv();
+      showToast('Downloaded official AICTE APAAR Batch Template (.CSV)');
+    } catch (err: any) {
+      showToast(`Template download failed: ${err?.message || 'Server error'}`);
     }
-    return s.replace(/"/g, '""');
   };
 
-  const handleDownloadErrorCsv = () => {
-    const errorRows = diagnosticsList.filter(
-      (d) => d.status === 'BLOCKING' || d.status === 'DUPLICATE' || d.status === 'WARNING'
-    );
-    const headers = ['Row_Number', 'Student_ID', 'APAAR_ID', 'Category', 'Violation_Status', 'Diagnostic_Note'];
-    const rows = errorRows.map((e) => [
-      e.row,
-      `"${sanitizeCsvValue(e.studentId)}"`,
-      `"${sanitizeCsvValue(e.apaarId)}"`,
-      `"${sanitizeCsvValue(e.category)}"`,
-      `"${sanitizeCsvValue(e.status)}"`,
-      `"${sanitizeCsvValue(e.note)}"`,
-    ]);
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    const filename = activeBatchId ? `${activeBatchId}_Exceptions.csv` : 'BATCH_2025_NITTRICHY_004_Exceptions.csv';
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast(`Downloaded Exception Diagnostic CSV (${errorRows.length} Rows)`);
+  // Export validation findings CSV with server-side injection protection
+  const handleDownloadErrorCsv = async () => {
+    try {
+      showToast('Exporting findings report CSV...');
+      await reportService.exportCsvReport({
+        report_type: 'findings',
+        batch_id: activeBatchId || undefined,
+        institution_id:
+          targetInstitutionId ||
+          (session?.instCode && session.instCode !== 'HQ-STATUTORY-DELHI' ? session.instCode : undefined),
+        filename: activeBatchId ? `${activeBatchId}_Findings_Exceptions.csv` : 'Findings_Exceptions.csv',
+      });
+      showToast('Downloaded Exception Diagnostic CSV');
+    } catch (err: any) {
+      showToast(`Export failed: ${err?.message || 'Server error'}`);
+    }
   };
 
   const handleTriggerFileSelect = () => {
@@ -450,6 +474,22 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
     }
   };
 
+  const handleSubmitBatch = async () => {
+    if (!activeBatchId) return;
+    setIsSubmitting(true);
+    try {
+      showToast(`Submitting batch ${activeBatchId} to Central Review...`);
+      const res = await batchService.submitBatch(activeBatchId, true);
+      showToast(res.message || `Batch ${activeBatchId} successfully submitted and locked for Central Review.`);
+      await loadBatchData(activeBatchId);
+    } catch (err: any) {
+      console.error('Batch submission failed:', err);
+      showToast(`Submission blocked: ${err?.message || 'Server rejected submission'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const filteredDiagnostics = useMemo(() => {
     if (filterType === 'ALL') return diagnosticsList;
     if (filterType === 'BLOCKING') {
@@ -527,8 +567,8 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
               </span>
               <span className="font-code-sm text-code-sm text-on-surface-variant max-w-[280px] truncate">
                 {session?.instCode
-                  ? `Node (${session.instCode})`
-                  : 'National Institute of Technology, Trichy (ID: AICTE-1-49281)'}
+                  ? `${session.instCode} • Institutional Node`
+                  : 'Apex Institute of Technology (INST-001)'}
               </span>
             </div>
 
@@ -545,7 +585,13 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
 
             <button
               aria-label="Notifications"
-              onClick={() => showToast('Batch #BATCH-2025-NITTRICHY-004 has 12 blocking errors.')}
+              onClick={() =>
+                showToast(
+                  activeBatchId
+                    ? `Batch #${activeBatchId} (${activeBatch?.status || 'Active'}) has ${validationSummary?.error_count ?? 0} blocking errors.`
+                    : 'No active batch selected.'
+                )
+              }
               className="relative p-space-xs text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
             >
               <span className="material-symbols-outlined text-[20px]">notifications</span>
@@ -700,6 +746,35 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                   </div>
                 )}
 
+                {/* Batch Selector Dropdown */}
+                {availableBatches.length > 0 && (
+                  <div className="flex items-center gap-space-xs bg-surface-card border border-border-strong px-space-md py-space-xs rounded-lg shadow-sm">
+                    <span className="material-symbols-outlined text-secondary text-[20px]">inventory_2</span>
+                    <div className="flex flex-col">
+                      <label htmlFor="active-batch-select" className="text-[10px] font-bold uppercase tracking-wider text-outline leading-tight">
+                        Active Batch ({availableBatches.length})
+                      </label>
+                      <select
+                        id="active-batch-select"
+                        value={activeBatchId || ''}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            loadBatchData(e.target.value);
+                          }
+                        }}
+                        disabled={isUploading || isValidating}
+                        className="bg-transparent font-title-sm text-title-sm font-semibold text-primary focus:outline-none cursor-pointer max-w-[210px] truncate"
+                      >
+                        {availableBatches.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.source_filename} ({b.status})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
                 {/* Hidden Real File Input */}
                 <input
                   type="file"
@@ -757,72 +832,120 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
               <div className="grid grid-cols-1 md:grid-cols-4 gap-space-xl relative">
                 {/* Step 1 */}
                 <div className="flex items-start gap-space-md group">
-                  <div className="w-9 h-9 rounded-full bg-status-verified-surface text-status-verified flex items-center justify-center shrink-0 border border-status-verified-border">
-                    <span className="material-symbols-outlined text-[18px]">check</span>
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border ${
+                    activeBatchId
+                      ? 'bg-status-verified-surface text-status-verified border-status-verified-border'
+                      : 'bg-surface-subtle text-outline border-border-subtle'
+                  }`}>
+                    <span className="material-symbols-outlined text-[18px]">
+                      {activeBatchId ? 'check' : 'upload_file'}
+                    </span>
                   </div>
                   <div className="min-w-0 pt-space-2xs">
-                    <span className="font-label-sm text-label-sm text-status-verified block uppercase font-bold tracking-wider">
-                      Step 01 • Finished
+                    <span className={`font-label-sm text-label-sm block uppercase font-bold tracking-wider ${
+                      activeBatchId ? 'text-status-verified' : 'text-outline'
+                    }`}>
+                      {activeBatchId ? 'Step 01 • Finished' : 'Step 01 • Pending'}
                     </span>
                     <span className="font-title-md text-title-md text-on-surface block truncate font-semibold">
                       Upload Source Data
                     </span>
                     <span className="font-body-sm text-body-sm text-outline block truncate mt-space-2xs">
-                      1.4 MB parsed
+                      {uploadedFileName || 'No dataset selected'}
                     </span>
                   </div>
                 </div>
 
                 {/* Step 2 */}
                 <div className="flex items-start gap-space-md group">
-                  <div className="w-9 h-9 rounded-full bg-status-verified-surface text-status-verified flex items-center justify-center shrink-0 border border-status-verified-border">
-                    <span className="material-symbols-outlined text-[18px]">check</span>
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border ${
+                    activeBatchId
+                      ? 'bg-status-verified-surface text-status-verified border-status-verified-border'
+                      : 'bg-surface-subtle text-outline border-border-subtle'
+                  }`}>
+                    <span className="material-symbols-outlined text-[18px]">
+                      {activeBatchId ? 'check' : 'schema'}
+                    </span>
                   </div>
                   <div className="min-w-0 pt-space-2xs">
-                    <span className="font-label-sm text-label-sm text-status-verified block uppercase font-bold tracking-wider">
-                      Step 02 • Finished
+                    <span className={`font-label-sm text-label-sm block uppercase font-bold tracking-wider ${
+                      activeBatchId ? 'text-status-verified' : 'text-outline'
+                    }`}>
+                      {activeBatchId ? 'Step 02 • Finished' : 'Step 02 • Pending'}
                     </span>
                     <span className="font-title-md text-title-md text-on-surface block truncate font-semibold">
                       Schema Mapping
                     </span>
                     <span className="font-body-sm text-body-sm text-outline block truncate mt-space-2xs">
-                      7/7 Mandatory Matched
+                      {activeBatchId ? '7/7 Mandatory Matched' : 'Awaiting file'}
                     </span>
                   </div>
                 </div>
 
                 {/* Step 3 */}
                 <div className="flex items-start gap-space-md relative">
-                  <div className="w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-md">
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 shadow-md ${
+                    isValidating
+                      ? 'bg-secondary text-on-secondary animate-spin'
+                      : activeBatchId
+                      ? 'bg-primary text-on-primary'
+                      : 'bg-surface-subtle text-outline'
+                  }`}>
                     <span className="material-symbols-outlined text-[18px]">rule</span>
                   </div>
                   <div className="min-w-0 pt-space-2xs">
-                    <span className="font-label-sm text-label-sm text-secondary block uppercase font-bold tracking-wider">
-                      Step 03 • In Inspection
+                    <span className={`font-label-sm text-label-sm block uppercase font-bold tracking-wider ${
+                      isValidating ? 'text-secondary' : activeBatchId ? 'text-primary font-semibold' : 'text-outline'
+                    }`}>
+                      {isValidating ? 'Step 03 • Running' : activeBatchId ? 'Step 03 • Evaluated' : 'Step 03 • Standby'}
                     </span>
                     <span className="font-title-md text-title-md text-primary font-bold block truncate">
                       Rule Verification
                     </span>
                     <span className="font-body-sm text-body-sm text-on-surface-variant block truncate mt-space-2xs">
-                      {totalRowsCount.toLocaleString()} rows verified
+                      {totalRowsCount > 0 ? `${totalRowsCount.toLocaleString()} rows audited` : '0 rows audited'}
                     </span>
                   </div>
                 </div>
 
                 {/* Step 4 */}
-                <div className="flex items-start gap-space-md opacity-60">
-                  <div className="w-9 h-9 rounded-full bg-surface-subtle text-outline flex items-center justify-center shrink-0 border border-border-subtle">
-                    <span className="font-label-md text-label-md font-semibold">04</span>
+                <div className={`flex items-start gap-space-md ${
+                  activeBatch?.status === 'SUBMITTED' || activeBatch?.status === 'ACCEPTED'
+                    ? 'opacity-100'
+                    : 'opacity-70'
+                }`}>
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border ${
+                    activeBatch?.status === 'SUBMITTED' || activeBatch?.status === 'ACCEPTED'
+                      ? 'bg-status-verified-surface text-status-verified border-status-verified-border'
+                      : (validationSummary?.error_count ?? 0) === 0 && totalRowsCount > 0
+                      ? 'bg-status-verified-surface text-status-verified border-status-verified-border'
+                      : 'bg-surface-subtle text-outline border-border-subtle'
+                  }`}>
+                    <span className="material-symbols-outlined text-[18px]">
+                      {activeBatch?.status === 'SUBMITTED' || activeBatch?.status === 'ACCEPTED'
+                        ? 'verified'
+                        : (validationSummary?.error_count ?? 0) === 0 && totalRowsCount > 0
+                        ? 'send'
+                        : 'lock'}
+                    </span>
                   </div>
                   <div className="min-w-0 pt-space-2xs">
                     <span className="font-label-sm text-label-sm text-outline block uppercase tracking-wider font-semibold">
-                      Step 04 • Locked
+                      {activeBatch?.status === 'SUBMITTED' || activeBatch?.status === 'ACCEPTED'
+                        ? 'Step 04 • Submitted'
+                        : (validationSummary?.error_count ?? 0) === 0 && totalRowsCount > 0
+                        ? 'Step 04 • Ready'
+                        : 'Step 04 • Locked'}
                     </span>
                     <span className="font-title-md text-title-md text-on-surface-variant block truncate">
-                      Final Ingestion
+                      Final Submission
                     </span>
                     <span className="font-body-sm text-body-sm text-outline block truncate mt-space-2xs">
-                      Pending blocker clearance
+                      {activeBatch?.status === 'SUBMITTED' || activeBatch?.status === 'ACCEPTED'
+                        ? `Status: ${activeBatch.status}`
+                        : (validationSummary?.error_count ?? 0) === 0 && totalRowsCount > 0
+                        ? 'Ready for central review'
+                        : `${validationSummary?.error_count ?? 0} blockers pending`}
                     </span>
                   </div>
                 </div>
@@ -908,12 +1031,12 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                       </span>
                       <span
                         className="font-title-md text-title-md text-on-surface font-semibold truncate block mt-space-2xs"
-                        title={uploadedFileName || (isLiveBatch ? 'Live Batch' : 'NIT_Trichy_UG_2025.xlsx')}
+                        title={uploadedFileName || 'No Dataset Selected'}
                       >
-                        {uploadedFileName || (isLiveBatch ? 'Uploaded Dataset' : 'NIT_Trichy_UG_2025.xlsx')}
+                        {uploadedFileName || 'No Dataset Selected'}
                       </span>
                       <span className="font-body-sm text-body-sm text-on-surface-variant mt-space-2xs block">
-                        {uploadedFileSize || '1.4 MB'} • {totalRowsCount} Records
+                        {uploadedFileSize || '0 KB'} • {totalRowsCount} Records
                       </span>
                     </div>
                     <div>
@@ -929,7 +1052,7 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                     </div>
                     <div>
                       <span className="font-label-sm text-label-sm text-outline block uppercase tracking-wider">
-                        Batch ID &amp; Timestamp
+                        Batch ID &amp; Lifecycle
                       </span>
                       {activeBatchId ? (
                         <button
@@ -940,12 +1063,12 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                           {activeBatchId} ↗
                         </button>
                       ) : (
-                        <span className="font-code-sm text-code-sm text-primary font-bold block truncate mt-space-2xs">
-                          BATCH-2025-NITTRICHY-004
+                        <span className="font-code-sm text-code-sm text-outline font-bold block truncate mt-space-2xs">
+                          No Active Batch
                         </span>
                       )}
                       <span className="font-body-sm text-body-sm text-on-surface-variant mt-space-2xs block">
-                        {isLiveBatch ? 'Active Live Session' : '12 Oct 2025, 14:32 IST'}
+                        {activeBatch ? `Status: ${activeBatch.status} • v${activeBatch.version}` : 'Upload or select a batch'}
                       </span>
                     </div>
                   </div>
@@ -1233,33 +1356,33 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
 
                 <div className="w-full h-2 rounded-full overflow-hidden flex bg-surface-subtle">
                   <div
-                    className="bg-status-verified h-full"
+                    className="bg-status-verified h-full transition-all duration-300"
                     style={{
                       width: `${
                         totalRowsCount > 0
-                          ? ((validationSummary?.valid_records ?? (totalRowsCount - 28)) / totalRowsCount) * 100
-                          : 100
+                          ? ((validationSummary?.valid_records ?? 0) / totalRowsCount) * 100
+                          : 0
                       }%`,
                     }}
                     title="Valid Records"
                   ></div>
                   <div
-                    className="bg-status-error h-full"
+                    className="bg-status-error h-full transition-all duration-300"
                     style={{
                       width: `${
                         totalRowsCount > 0
-                          ? ((validationSummary?.error_count ?? 12) / totalRowsCount) * 100
+                          ? ((validationSummary?.error_count ?? 0) / totalRowsCount) * 100
                           : 0
                       }%`,
                     }}
                     title="Critical Errors"
                   ></div>
                   <div
-                    className="bg-status-review h-full"
+                    className="bg-status-review h-full transition-all duration-300"
                     style={{
                       width: `${
                         totalRowsCount > 0
-                          ? ((validationSummary?.warning_count ?? 16) / totalRowsCount) * 100
+                          ? ((validationSummary?.warning_count ?? 0) / totalRowsCount) * 100
                           : 0
                       }%`,
                     }}
@@ -1281,14 +1404,14 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                         Valid Records
                       </span>
                       <span className="font-headline-lg text-headline-lg text-status-verified font-bold mt-space-2xs block">
-                        {validationSummary ? validationSummary.valid_records : 1392}
+                        {validationSummary ? validationSummary.valid_records : 0}
                       </span>
                       <span className="font-body-sm text-body-sm text-on-surface-variant mt-space-2xs block">
                         {totalRowsCount > 0
                           ? `${Math.round(
-                              ((validationSummary?.valid_records ?? 1392) / totalRowsCount) * 100
+                              ((validationSummary?.valid_records ?? 0) / totalRowsCount) * 100
                             )}% of cohort`
-                          : '100%'}
+                          : '0% of cohort'}
                       </span>
                     </div>
                     <div className="w-10 h-10 rounded-full bg-status-verified-surface flex items-center justify-center">
@@ -1311,7 +1434,7 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                         Critical Blocking Errors
                       </span>
                       <span className="font-headline-lg text-headline-lg text-status-error font-bold mt-space-2xs block">
-                        {validationSummary ? validationSummary.error_count : 12}
+                        {validationSummary ? validationSummary.error_count : 0}
                       </span>
                       <span className="font-body-sm text-body-sm text-on-surface-variant mt-space-2xs block">
                         Prevents Ingestion
@@ -1337,7 +1460,7 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                         Review Warnings
                       </span>
                       <span className="font-headline-lg text-headline-lg text-status-review font-bold mt-space-2xs block">
-                        {validationSummary ? validationSummary.warning_count : 16}
+                        {validationSummary ? validationSummary.warning_count : 0}
                       </span>
                       <span className="font-body-sm text-body-sm text-on-surface-variant mt-space-2xs block">
                         Conditional Attention
@@ -1495,6 +1618,21 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                           </tr>
                         );
                       })}
+                      {filteredDiagnostics.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-12 text-center text-outline">
+                            <span className="material-symbols-outlined text-4xl text-outline/50 block mb-2">
+                              fact_check
+                            </span>
+                            <span className="font-semibold block text-base text-on-surface">No findings matching the selected filter</span>
+                            <span className="text-xs text-on-surface-variant block mt-1">
+                              {activeBatchId
+                                ? 'All records in this batch adhere to the selected validation criteria.'
+                                : 'Upload or select an import batch to run diagnostics.'}
+                            </span>
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1604,19 +1742,46 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                 </button>
               </div>
 
-              <div className="flex items-center gap-space-lg w-full md:w-auto justify-end">
+              <div className="flex flex-wrap items-center gap-space-md w-full md:w-auto justify-end">
                 {activeBatchId && (
                   <button
                     onClick={() => triggerBatchValidation(activeBatchId)}
                     disabled={isValidating}
-                    className="inline-flex items-center gap-space-xs bg-secondary text-on-secondary px-space-lg py-space-sm rounded-lg hover:bg-secondary-fixed transition-colors font-title-md text-title-md shadow-sm cursor-pointer disabled:opacity-50"
+                    className="inline-flex items-center gap-space-xs bg-secondary text-on-secondary px-space-md py-space-sm rounded-lg hover:bg-secondary-fixed transition-colors font-title-md text-title-md shadow-sm cursor-pointer disabled:opacity-50"
                     type="button"
                   >
                     <span className={`material-symbols-outlined text-[18px] ${isValidating ? 'animate-spin' : ''}`}>
                       refresh
                     </span>
-                    <span>{isValidating ? 'Validating...' : 'Re-Validate Batch'}</span>
+                    <span>{isValidating ? 'Validating...' : 'Re-Validate'}</span>
                   </button>
+                )}
+
+                {/* Submissions button if 0 blocking errors */}
+                {activeBatchId && (activeBatch?.status === 'VALIDATED' || activeBatch?.status === 'DRAFT') && (
+                  <button
+                    onClick={handleSubmitBatch}
+                    disabled={isSubmitting || (validationSummary ? validationSummary.error_count > 0 : diagnosticsList.filter(d => d.status === 'BLOCKING' || d.status === 'DUPLICATE').length > 0)}
+                    className="inline-flex items-center gap-space-xs bg-status-verified text-white px-space-md py-space-sm rounded-lg hover:opacity-90 transition-all font-title-md text-title-md shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    type="button"
+                    title={
+                      (validationSummary ? validationSummary.error_count : diagnosticsList.filter(d => d.status === 'BLOCKING' || d.status === 'DUPLICATE').length) > 0
+                        ? 'Resolve all blocking errors before submission'
+                        : 'Submit validated batch to AICTE Central Review'
+                    }
+                  >
+                    <span className={`material-symbols-outlined text-[18px] ${isSubmitting ? 'animate-spin' : ''}`}>
+                      {isSubmitting ? 'hourglass_top' : 'send_and_archive'}
+                    </span>
+                    <span>{isSubmitting ? 'Submitting...' : 'Submit to AICTE'}</span>
+                  </button>
+                )}
+
+                {activeBatchId && (activeBatch?.status === 'SUBMITTED' || activeBatch?.status === 'UNDER_REVIEW' || activeBatch?.status === 'ACCEPTED') && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-status-verified-surface text-status-verified border border-status-verified-border">
+                    <span className="material-symbols-outlined text-[16px]">lock</span>
+                    Locked: {activeBatch?.status}
+                  </span>
                 )}
 
                 <div className="hidden sm:flex flex-col text-right pr-space-xs">
@@ -1633,28 +1798,44 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                     {validationSummary
                       ? validationSummary.error_count
                       : diagnosticsList.filter((d) => d.status === 'BLOCKING' || d.status === 'DUPLICATE').length}{' '}
-                    INGESTION BLOCKERS ACTIVE
+                    BLOCKERS
                   </span>
                   <span className="font-code-sm text-code-sm text-outline mt-space-2xs">
                     {(validationSummary
                       ? validationSummary.error_count
                       : diagnosticsList.filter((d) => d.status === 'BLOCKING' || d.status === 'DUPLICATE').length) >
                     0
-                      ? 'Resolution required before Step 4'
-                      : 'All records clear for submission'}
+                      ? 'Correction needed'
+                      : 'Clear for submission'}
                   </span>
                 </div>
+
+                {/* Explore findings in DQ page */}
                 <button
                   onClick={() => {
                     if (onNavigateTab) {
-                      onNavigateTab('aicte-review');
+                      onNavigateTab('findings', activeBatchId || undefined);
                     }
                   }}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-space-xs bg-primary text-on-primary px-space-xl py-space-sm rounded-lg hover:bg-navy-deep transition-all font-title-md text-title-md shadow-md focus:ring-2 focus:ring-secondary focus:outline-none cursor-pointer"
+                  className="inline-flex items-center justify-center gap-space-xs bg-primary text-on-primary px-space-md py-space-sm rounded-lg hover:bg-navy-deep transition-all font-title-md text-title-md shadow-md focus:ring-2 focus:ring-secondary focus:outline-none cursor-pointer"
                   type="button"
                 >
-                  <span className="material-symbols-outlined text-[18px]">troubleshoot</span>
-                  <span>Open Explainable Findings Review</span>
+                  <span className="material-symbols-outlined text-[18px]">rule</span>
+                  <span>Data Quality Findings</span>
+                </button>
+
+                {/* Import History navigation */}
+                <button
+                  onClick={() => {
+                    if (onNavigateTab) {
+                      onNavigateTab('history', activeBatchId || undefined);
+                    }
+                  }}
+                  className="inline-flex items-center justify-center gap-space-xs bg-surface-subtle border border-border-subtle text-on-surface px-space-md py-space-sm rounded-lg hover:bg-surface-variant transition-all font-title-md text-title-md shadow-sm focus:outline-none cursor-pointer"
+                  type="button"
+                >
+                  <span className="material-symbols-outlined text-[18px]">history</span>
+                  <span>Batch History</span>
                 </button>
               </div>
             </div>
