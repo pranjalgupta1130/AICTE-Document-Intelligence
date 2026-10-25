@@ -49,12 +49,33 @@ class ImportCommitResponse(BaseModel):
         if self.errors is None:
             self.errors = self.row_errors
 
+class StudentRecordRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    batch_id: str
+    institution_id: str
+    programme_id: str
+    apaar_id: Optional[str] = None
+    institution_student_id: str
+    student_name: Optional[str] = None
+    academic_year: str
+    enrolment_status: str
+    seat_type: str
+    is_nri: bool
+    is_oci: bool
+    is_fn: bool
+    source_row_number: Optional[int] = None
+    created_at: datetime
+
 class BatchRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     institution_id: str
+    institution_name: Optional[str] = None
     uploader_user_id: Optional[str] = None
+    uploader_email: Optional[str] = None
     source_filename: str
     academic_year: str
     version: int
@@ -63,6 +84,8 @@ class BatchRead(BaseModel):
     valid_rows: int
     error_rows: int
     warning_rows: int
+    has_original_file: bool = False
+    file_size_bytes: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 

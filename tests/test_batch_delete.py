@@ -124,7 +124,7 @@ def test_successful_batch_deletion_and_cascades(client: TestClient):
         # Verify audit log was recorded
         audit = db.query(AuditEvent).filter(
             AuditEvent.object_id == batch_id,
-            AuditEvent.action == AuditAction.IMPORT_UPLOAD
+            AuditEvent.action == AuditAction.BATCH_DELETE
         ).first()
         assert audit is not None
         assert "Deleted batch" in audit.details

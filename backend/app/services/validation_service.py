@@ -223,6 +223,9 @@ def execute_batch_validation(
             else:
                 p_counts["REGULAR"] += 1
 
+    # Set of distinct record IDs in this batch that have at least one blocking error
+    invalid_record_ids: Set[str] = set()
+
     # 2. Iterate Student Records for Field and Entity Checks
     for idx, rec in enumerate(records, start=1):
         effective_row_num = rec.source_row_number if rec.source_row_number is not None else idx
@@ -231,6 +234,7 @@ def execute_batch_validation(
         # --- Rule 1: Student Name presence & formatting ---
         if not rec.student_name or len(rec.student_name.strip()) < 2:
             rec_has_blocking_error = True
+            invalid_record_ids.add(rec.id)
             blocking_error_count += 1
             findings.append(ValidationFinding(
                 batch_id=batch_id,
@@ -249,6 +253,7 @@ def execute_batch_validation(
         if not apaar_valid:
             if apaar_sev == FindingSeverity.BLOCKING_ERROR:
                 rec_has_blocking_error = True
+                invalid_record_ids.add(rec.id)
                 blocking_error_count += 1
             elif apaar_sev == FindingSeverity.WARNING:
                 warning_count += 1
@@ -267,6 +272,7 @@ def execute_batch_validation(
         # --- Rule 3: Programme Existence ---
         if rec.programme_id not in programmes:
             rec_has_blocking_error = True
+            invalid_record_ids.add(rec.id)
             blocking_error_count += 1
             findings.append(ValidationFinding(
                 batch_id=batch_id,
@@ -314,6 +320,7 @@ def execute_batch_validation(
         # Duplicate roll within current batch
         if rec.institution_student_id in seen_inst_student_ids:
             rec_has_blocking_error = True
+            invalid_record_ids.add(rec.id)
             blocking_error_count += 1
             first_seen = seen_inst_student_ids[rec.institution_student_id]
             findings.append(ValidationFinding(
@@ -333,6 +340,7 @@ def execute_batch_validation(
         # Duplicate roll across previous batches
         if rec.institution_student_id in hist_inst_student_ids:
             rec_has_blocking_error = True
+            invalid_record_ids.add(rec.id)
             blocking_error_count += 1
             prev = hist_inst_student_ids[rec.institution_student_id]
             findings.append(ValidationFinding(
@@ -351,6 +359,7 @@ def execute_batch_validation(
         if rec.apaar_id:
             if rec.apaar_id in seen_apaars:
                 rec_has_blocking_error = True
+                invalid_record_ids.add(rec.id)
                 blocking_error_count += 1
                 prior = seen_apaars[rec.apaar_id]
                 findings.append(ValidationFinding(
@@ -367,21 +376,22 @@ def execute_batch_validation(
             else:
                 seen_apaars[rec.apaar_id] = rec
 
-            # Duplicate APAAR ID across earlier batches of same institution
-            if rec.apaar_id in hist_apaars:
-                warning_count += 1
-                prev_stu = hist_apaars[rec.apaar_id]
-                findings.append(ValidationFinding(
-                    batch_id=batch_id,
-                    record_id=rec.id,
-                    row_number=effective_row_num,
-                    field_name="apaar_id",
-                    rule_code="RULE-DUP-004",
-                    severity=FindingSeverity.WARNING,
-                    message=f"APAAR ID '{rec.apaar_id}' was previously ingested in batch '{prev_stu.batch_id}' ({prev_stu.academic_year}).",
-                    actual_value=rec.apaar_id,
-                    suggested_action="Verify if student is enrolling in a second degree or repeating year."
-                ))
+                # Duplicate APAAR ID across earlier batches of same institution
+                # Disentangled: only evaluated for distinct batch records, not redundant in-batch collisions
+                if rec.apaar_id in hist_apaars:
+                    warning_count += 1
+                    prev_stu = hist_apaars[rec.apaar_id]
+                    findings.append(ValidationFinding(
+                        batch_id=batch_id,
+                        record_id=rec.id,
+                        row_number=effective_row_num,
+                        field_name="apaar_id",
+                        rule_code="RULE-DUP-004",
+                        severity=FindingSeverity.WARNING,
+                        message=f"APAAR ID '{rec.apaar_id}' was previously ingested in batch '{prev_stu.batch_id}' ({prev_stu.academic_year}).",
+                        actual_value=rec.apaar_id,
+                        suggested_action="Verify if student is enrolling in a second degree or repeating year."
+                    ))
 
             # --- Rule 6: Cross-Institution Duplicate Candidate Detection ---
             if rec.apaar_id in cross_inst_apaars:
@@ -498,11 +508,12 @@ def execute_batch_validation(
     if findings:
         db.add_all(findings)
 
-    valid_records_count = len(records) - blocking_error_count if blocking_error_count < len(records) else 0
-    batch.error_rows = blocking_error_count
+    # Distinct records in this batch that have no blocking errors are valid
+    valid_records_count = len(records) - len(invalid_record_ids)
+    batch.error_rows = len(invalid_record_ids)
     batch.warning_rows = warning_count
     batch.valid_rows = valid_records_count
-    batch.status = BatchStatus.NEEDS_CORRECTION if blocking_error_count > 0 else BatchStatus.VALIDATED
+    batch.status = BatchStatus.NEEDS_CORRECTION if (blocking_error_count > 0 or len(invalid_record_ids) > 0) else BatchStatus.VALIDATED
 
     # 4. Audit Log & Atomic Persistence
     audit = AuditEvent(
@@ -536,10 +547,10 @@ def execute_batch_validation(
         if is_match_candidate_pair_conflict(exc):
             batch = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
             if batch:
-                batch.error_rows = blocking_error_count
+                batch.error_rows = len(invalid_record_ids)
                 batch.warning_rows = warning_count
                 batch.valid_rows = valid_records_count
-                batch.status = BatchStatus.NEEDS_CORRECTION if blocking_error_count > 0 else BatchStatus.VALIDATED
+                batch.status = BatchStatus.NEEDS_CORRECTION if (blocking_error_count > 0 or len(invalid_record_ids) > 0) else BatchStatus.VALIDATED
                 if findings:
                     db.add_all(findings)
                 db.add(audit)

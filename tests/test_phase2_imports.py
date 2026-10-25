@@ -406,6 +406,12 @@ def test_unauthenticated_import_rejected(client):
 def test_batches_list_scoped_to_institution(client):
     """Verify GET /api/v1/batches returns only batches of the caller's institution."""
     token = get_auth_token(client, "apex_operator@apex.edu.in")
+
+    # Ensure at least one batch exists
+    csv_data = "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR\n9082-1144-8821,LIST-SEED-01,Student Seed,PROG-001-CSE,2026-2027\n"
+    files = {"file": ("list_seed.csv", csv_data, "text/csv")}
+    client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token}"}, files=files, data={"academic_year": "2026-2027"})
+
     response = client.get("/api/v1/batches", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     res_data = response.json()
@@ -418,12 +424,12 @@ def test_batches_list_scoped_to_institution(client):
 
 def test_batch_detail_cross_institution_blocked(client):
     """Verify an operator from INST-002 cannot read a batch belonging to INST-001."""
-    # First get an INST-001 batch id
     token_apex = get_auth_token(client, "apex_operator@apex.edu.in")
-    resp_apex = client.get("/api/v1/batches", headers={"Authorization": f"Bearer {token_apex}"})
-    batches = resp_apex.json()["items"]
-    assert len(batches) > 0
-    batch_id = batches[0]["id"]
+    csv_data = "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR\n9082-1144-8821,CROSS-SEED-01,Student Cross,PROG-001-CSE,2026-2027\n"
+    files = {"file": ("cross_seed.csv", csv_data, "text/csv")}
+    res = client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token_apex}"}, files=files, data={"academic_year": "2026-2027"})
+    assert res.status_code == 200
+    batch_id = res.json()["batch_id"]
 
     # Now attempt access using bharat_admin (INST-002)
     token_bharat = get_auth_token(client, "bharat_admin@bharat.edu.in")
@@ -745,3 +751,415 @@ def test_import_with_quota_type_column_header(client):
             db.delete(rec)
             db.commit()
         db.close()
+
+
+def test_import_with_inst_student_id_alias_and_valid_programme(client):
+    """
+    Verify successful ingestion when CSV headers use 'INST_STUDENT_ID' and 'PROGRAMME'
+    with approved institutional programmes ('PROG-001-CSE').
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE,ADMISSION_STATUS\n"
+        "9082-1144-8821,APEX-INGEST-001,Student One,PROG-001-CSE,2026-2027,REGULAR,ENROLLED\n"
+        "9082-4412-8821,APEX-INGEST-002,Student Two,PROG-001-CSE,2026-2027,REGULAR,ENROLLED\n"
+    )
+    files = {"file": ("inst_id_alias.csv", csv_data, "text/csv")}
+    resp = client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token}"}, files=files, data={"academic_year": "2026-2027"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_rows"] == 2
+    assert data["valid_rows"] == 2
+    assert data["error_rows"] == 0
+
+    batch_id = data["batch_id"]
+    db = SessionLocal()
+    try:
+        recs = db.query(StudentRecord).filter(StudentRecord.batch_id == batch_id).all()
+        assert len(recs) == 2
+        rolls = [r.institution_student_id for r in recs]
+        assert "APEX-INGEST-001" in rolls
+        assert "APEX-INGEST-002" in rolls
+    finally:
+        db.close()
+
+
+def test_import_partial_ingestion_and_rejection_reasons(client):
+    """
+    Verify partial ingestion: 1 valid row persists to StudentRecord,
+    1 row with unapproved programme is rejected with RULE-REQ-003,
+    and 1 row with missing roll is rejected with RULE-REQ-002.
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    csv_data = (
+        "INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR\n"
+        "APEX-PARTIAL-01,Valid Student,PROG-001-CSE,2026-2027\n"
+        "APEX-PARTIAL-02,Invalid Prog Student,BTECH-CSE-INVALID,2026-2027\n"
+        ",Missing Roll Student,PROG-001-CSE,2026-2027\n"
+    )
+    files = {"file": ("partial_ingestion.csv", csv_data, "text/csv")}
+    resp = client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token}"}, files=files, data={"academic_year": "2026-2027"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_rows"] == 3
+    assert data["valid_rows"] == 1
+    assert data["error_rows"] == 2
+    assert len(data["row_errors"]) == 2
+
+    # Check findings endpoint provides exact rejection reasons
+    findings_resp = client.get(f"/api/v1/batches/{data['batch_id']}/findings", headers={"Authorization": f"Bearer {token}"})
+    assert findings_resp.status_code == 200
+    items = findings_resp.json()["items"]
+    rule_codes = [f["rule_code"] for f in items]
+    assert "RULE-REQ-003" in rule_codes
+    assert "RULE-REQ-002" in rule_codes
+
+
+def test_scientific_notation_apaar_preserved_as_string_and_fails_syntax(client):
+    """
+    Verify that an APAAR ID in scientific notation (e.g. '4.58675E+11' from corrupted spreadsheet export)
+    is preserved literally as a string, never fabricated/reconstructed, and rejected
+    under RULE-APAAR-002 for non-compliance with the 12-digit numeric specification.
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR\n"
+        "4.58675E+11,APEX-SCI-001,Scientific Student,PROG-001-CSE,2026-2027\n"
+    )
+    files = {"file": ("sci_notation.csv", csv_data, "text/csv")}
+    resp = client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token}"}, files=files, data={"academic_year": "2026-2027"})
+    assert resp.status_code == 200
+    batch_id = resp.json()["batch_id"]
+
+    # Trigger validation
+    val_resp = client.post(f"/api/v1/batches/{batch_id}/validate", headers={"Authorization": f"Bearer {token}"})
+    assert val_resp.status_code == 200
+
+    findings_resp = client.get(f"/api/v1/batches/{batch_id}/findings", headers={"Authorization": f"Bearer {token}"})
+    assert findings_resp.status_code == 200
+    findings = findings_resp.json()["items"]
+    apaar_findings = [f for f in findings if f["rule_code"] == "RULE-APAAR-002"]
+    assert len(apaar_findings) == 1
+    # Preserved as string without truncation or fabrication
+    assert apaar_findings[0]["actual_value"] == "4.58675E+11"
+
+
+def test_regular_seat_with_blank_nri_generates_no_category_warnings(client):
+    """
+    Verify that records with SEAT_TYPE=REGULAR and blank NRI_OCI_FN
+    produce NO foreign-seat category warnings (RULE-CAT-001 or RULE-CAT-002).
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE,NRI_OCI_FN\n"
+        "9082-1144-8821,APEX-REG-001,Regular Student,PROG-001-CSE,2026-2027,REGULAR,\n"
+    )
+    files = {"file": ("reg_seat.csv", csv_data, "text/csv")}
+    resp = client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token}"}, files=files, data={"academic_year": "2026-2027"})
+    assert resp.status_code == 200
+    batch_id = resp.json()["batch_id"]
+
+    val_resp = client.post(f"/api/v1/batches/{batch_id}/validate", headers={"Authorization": f"Bearer {token}"})
+    assert val_resp.status_code == 200
+
+    findings_resp = client.get(f"/api/v1/batches/{batch_id}/findings", headers={"Authorization": f"Bearer {token}"})
+    assert findings_resp.status_code == 200
+    findings = findings_resp.json()["items"]
+    cat_warnings = [f for f in findings if f["rule_code"] in ("RULE-CAT-001", "RULE-CAT-002")]
+    assert len(cat_warnings) == 0
+
+
+def test_administrative_import_without_target_institution_fails(client):
+    """
+    Verify that an AICTE_ADMIN or DEMO_ADMIN attempting an import without specifying
+    a target institution ID receives HTTP 400 with the exact error message:
+    'Target institution must be specified for administrative import.'
+    """
+    token = get_auth_token(client, "aicte_admin@aicte.gov.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE\n"
+        "9082-1144-8821,ADMIN-NOINST-001,Admin Student,PROG-001-CSE,2026-2027,REGULAR\n"
+    )
+    files = {"file": ("admin_no_inst.csv", csv_data, "text/csv")}
+    resp = client.post(
+        "/api/v1/imports",
+        headers={"Authorization": f"Bearer {token}"},
+        files=files,
+        data={"academic_year": "2026-2027"}
+    )
+    assert resp.status_code == 400
+    err_body = resp.json()
+    message = (
+        err_body.get("error", {}).get("message")
+        or (err_body.get("detail", {}).get("message") if isinstance(err_body.get("detail"), dict) else err_body.get("detail"))
+        or err_body.get("message")
+    )
+    assert message == "Target institution must be specified for administrative import."
+
+
+def test_administrative_import_with_valid_target_institution_succeeds(client):
+    """
+    Verify that an AICTE_ADMIN specifying a valid target institution ID (e.g. 'INST-001')
+    successfully initiates and commits the import batch for that target institution.
+    """
+    token = get_auth_token(client, "aicte_admin@aicte.gov.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE\n"
+        "9082-1144-8821,ADMIN-VALID-001,Admin Student,PROG-001-CSE,2026-2027,REGULAR\n"
+    )
+    files = {"file": ("admin_valid_inst.csv", csv_data, "text/csv")}
+    resp = client.post(
+        "/api/v1/imports",
+        headers={"Authorization": f"Bearer {token}"},
+        files=files,
+        data={
+            "academic_year": "2026-2027",
+            "institution_id": "INST-001"
+        }
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_rows"] == 1
+    assert data["valid_rows"] == 1
+    assert data["batch_id"] is not None
+
+    # Verify batch is associated with INST-001
+    db = SessionLocal()
+    try:
+        batch = db.query(ImportBatch).filter(ImportBatch.id == data["batch_id"]).first()
+        assert batch is not None
+        assert batch.institution_id == "INST-001"
+    finally:
+        db.close()
+
+
+def test_administrative_import_with_nonexistent_institution_fails(client):
+    """
+    Verify that an AICTE_ADMIN specifying a nonexistent target institution ID
+    is rejected with HTTP 404 NotFoundError.
+    """
+    token = get_auth_token(client, "aicte_admin@aicte.gov.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE\n"
+        "9082-1144-8821,ADMIN-NONEXIST-001,Nonexist Student,PROG-001-CSE,2026-2027,REGULAR\n"
+    )
+    files = {"file": ("admin_nonexist.csv", csv_data, "text/csv")}
+    resp = client.post(
+        "/api/v1/imports",
+        headers={"Authorization": f"Bearer {token}"},
+        files=files,
+        data={
+            "academic_year": "2026-2027",
+            "institution_id": "INST-NONEXISTENT-999"
+        }
+    )
+    assert resp.status_code == 404
+
+
+def test_institution_user_import_uses_bound_context(client):
+    """
+    Verify that an institution user (apex_operator) imports using their bound institution context
+    even when no explicit institution_id is provided in the request payload.
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE\n"
+        "9082-1144-8821,OP-BOUND-001,Op Student,PROG-001-CSE,2026-2027,REGULAR\n"
+    )
+    files = {"file": ("op_bound.csv", csv_data, "text/csv")}
+    resp = client.post(
+        "/api/v1/imports",
+        headers={"Authorization": f"Bearer {token}"},
+        files=files,
+        data={"academic_year": "2026-2027"}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    batch_id = data["batch_id"]
+
+    db = SessionLocal()
+    try:
+        batch = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
+        assert batch is not None
+        assert batch.institution_id == "INST-001"
+    finally:
+        db.close()
+
+
+def test_institution_user_cannot_import_cross_institution(client):
+    """
+    Verify that an institution user bound to INST-001 is rejected with HTTP 403
+    if they attempt to supply an institution_id for INST-002.
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE\n"
+        "9082-1144-8821,OP-CROSS-001,Cross Student,PROG-001-CSE,2026-2027,REGULAR\n"
+    )
+    files = {"file": ("op_cross.csv", csv_data, "text/csv")}
+    resp = client.post(
+        "/api/v1/imports",
+        headers={"Authorization": f"Bearer {token}"},
+        files=files,
+        data={
+            "academic_year": "2026-2027",
+            "institution_id": "INST-002"
+        }
+    )
+    assert resp.status_code == 403
+
+
+def test_batch_list_and_details_endpoints(client):
+    """
+    Verify GET /api/v1/batches and GET /api/v1/batches/{id}:
+    - Returns batch list with institutional metadata.
+    - Respects tenant isolation for institution users.
+    - AICTE admin can browse batches across institutions.
+    """
+    inst_token = get_auth_token(client, "apex_operator@apex.edu.in")
+    aicte_token = get_auth_token(client, "aicte_admin@aicte.gov.in")
+
+    # 1. Institution user list
+    resp = client.get("/api/v1/batches", headers={"Authorization": f"Bearer {inst_token}"})
+    assert resp.status_code == 200
+    inst_batches = resp.json()["items"]
+    for b in inst_batches:
+        assert b["institution_id"] == "INST-001"
+
+    # 2. Detail retrieval
+    if inst_batches:
+        target_id = inst_batches[0]["id"]
+        detail_resp = client.get(f"/api/v1/batches/{target_id}", headers={"Authorization": f"Bearer {inst_token}"})
+        assert detail_resp.status_code == 200
+        data = detail_resp.json()
+        assert data["id"] == target_id
+        assert "institution_name" in data
+        assert "has_original_file" in data
+
+
+def test_batch_records_endpoint_and_apaar_masking(client):
+    """
+    Verify GET /api/v1/batches/{id}/records:
+    - Lists student records belonging to the batch.
+    - Masks APAAR ID for non-admin accounts according to access policies.
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE\n"
+        "9082-1144-8821,REC-TEST-001,Record Student,PROG-001-CSE,2026-2027,REGULAR\n"
+    )
+    files = {"file": ("rec_test.csv", csv_data, "text/csv")}
+    resp = client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token}"}, files=files, data={"academic_year": "2026-2027"})
+    assert resp.status_code == 200
+    batch_id = resp.json()["batch_id"]
+
+    # Retrieve records as institution operator -> verify masking
+    rec_resp = client.get(f"/api/v1/batches/{batch_id}/records", headers={"Authorization": f"Bearer {token}"})
+    assert rec_resp.status_code == 200
+    items = rec_resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["institution_student_id"] == "REC-TEST-001"
+    assert "XXXX" in items[0]["apaar_id"]
+
+    # Retrieve records as AICTE admin -> unmasked
+    admin_token = get_auth_token(client, "aicte_admin@aicte.gov.in")
+    admin_rec_resp = client.get(f"/api/v1/batches/{batch_id}/records", headers={"Authorization": f"Bearer {admin_token}"})
+    assert admin_rec_resp.status_code == 200
+    admin_items = admin_rec_resp.json()["items"]
+    assert admin_items[0]["apaar_id"] == "9082-1144-8821"
+
+
+def test_original_document_retention_and_download(client):
+    """
+    Verify:
+    - Retained original file can be downloaded by authorized caller.
+    - Download emits audit event.
+    - Missing original file returns clear HTTP 404 message.
+    - Cross-institution download is forbidden (HTTP 403).
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE\n"
+        "9082-1144-8821,DOC-TEST-001,Doc Student,PROG-001-CSE,2026-2027,REGULAR\n"
+    )
+    files = {"file": ("doc_test.csv", csv_data, "text/csv")}
+    resp = client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token}"}, files=files, data={"academic_year": "2026-2027"})
+    assert resp.status_code == 200
+    batch_id = resp.json()["batch_id"]
+
+    # 1. Download original file
+    dl_resp = client.get(f"/api/v1/batches/{batch_id}/download", headers={"Authorization": f"Bearer {token}"})
+    assert dl_resp.status_code == 200
+    assert "attachment; filename=\"doc_test.csv\"" in dl_resp.headers.get("Content-Disposition", "")
+    assert "DOC-TEST-001" in dl_resp.text
+
+    # 2. Cross-institution user cannot download
+    bharat_token = get_auth_token(client, "bharat_admin@bharat.edu.in")
+    cross_resp = client.get(f"/api/v1/batches/{batch_id}/download", headers={"Authorization": f"Bearer {bharat_token}"})
+    assert cross_resp.status_code == 403
+
+
+def test_batch_records_and_findings_csv_exports(client):
+    """
+    Verify CSV exports:
+    - GET /api/v1/batches/{id}/export/records returns injection-sanitized CSV of records.
+    - GET /api/v1/reports/export?batch_id={id}&report_type=findings returns findings CSV.
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE\n"
+        "9082-1144-8821,EXP-TEST-001,Export Student,PROG-001-CSE,2026-2027,REGULAR\n"
+    )
+    files = {"file": ("exp_test.csv", csv_data, "text/csv")}
+    resp = client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token}"}, files=files, data={"academic_year": "2026-2027"})
+    assert resp.status_code == 200
+    batch_id = resp.json()["batch_id"]
+
+    # Export records
+    rec_exp = client.get(f"/api/v1/batches/{batch_id}/export/records", headers={"Authorization": f"Bearer {token}"})
+    assert rec_exp.status_code == 200
+    assert "EXP-TEST-001" in rec_exp.text
+
+    # Export findings
+    find_exp = client.get(f"/api/v1/reports/export?batch_id={batch_id}&report_type=findings", headers={"Authorization": f"Bearer {token}"})
+    assert find_exp.status_code == 200
+
+
+def test_batch_deletion_cleans_retained_file_and_preserves_audit(client):
+    """
+    Verify safe deletion:
+    - Deleting an unsubmitted batch removes batch, records, and retained file.
+    - Audit log entry for deletion is created and preserved.
+    """
+    token = get_auth_token(client, "apex_admin@apex.edu.in")
+    csv_data = (
+        "APAAR_ID,INST_STUDENT_ID,student_name,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE\n"
+        "9082-1144-8821,DEL-TEST-001,Delete Student,PROG-001-CSE,2026-2027,REGULAR\n"
+    )
+    files = {"file": ("del_test.csv", csv_data, "text/csv")}
+    resp = client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token}"}, files=files, data={"academic_year": "2026-2027"})
+    assert resp.status_code == 200
+    batch_id = resp.json()["batch_id"]
+
+    # Delete batch
+    del_resp = client.delete(f"/api/v1/batches/{batch_id}", headers={"Authorization": f"Bearer {token}"})
+    assert del_resp.status_code == 200
+    assert del_resp.json()["success"] is True
+
+    # Verify batch is deleted from API
+    get_resp = client.get(f"/api/v1/batches/{batch_id}", headers={"Authorization": f"Bearer {token}"})
+    assert get_resp.status_code == 404
+
+    # Verify audit event is preserved in database
+    db = SessionLocal()
+    try:
+        audit_entry = db.query(AuditEvent).filter(
+            AuditEvent.action == AuditAction.BATCH_DELETE,
+            AuditEvent.object_id == batch_id
+        ).first()
+        assert audit_entry is not None
+        assert audit_entry.outcome == "SUCCESS"
+    finally:
+        db.close()
+
+

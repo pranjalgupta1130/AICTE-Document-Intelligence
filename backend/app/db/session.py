@@ -78,6 +78,18 @@ def init_db() -> None:
                     conn.execute(text("ALTER TABLE student_records ADD COLUMN source_row_number INTEGER;"))
                     conn.commit()
                     logger.info("Added missing column 'source_row_number' to 'student_records'.")
+
+                # Check if storage_path and file_size_bytes exist in import_batches
+                batch_cols_res = conn.execute(text("PRAGMA table_info(import_batches);"))
+                batch_cols = [row[1] for row in batch_cols_res.fetchall()]
+                if batch_cols and "storage_path" not in batch_cols:
+                    conn.execute(text("ALTER TABLE import_batches ADD COLUMN storage_path VARCHAR(512);"))
+                    conn.commit()
+                    logger.info("Added missing column 'storage_path' to 'import_batches'.")
+                if batch_cols and "file_size_bytes" not in batch_cols:
+                    conn.execute(text("ALTER TABLE import_batches ADD COLUMN file_size_bytes INTEGER;"))
+                    conn.commit()
+                    logger.info("Added missing column 'file_size_bytes' to 'import_batches'.")
             elif dialect_name in ("postgresql", "postgres"):
                 col_check = conn.execute(text("""
                     SELECT column_name FROM information_schema.columns
@@ -87,8 +99,12 @@ def init_db() -> None:
                     conn.execute(text("ALTER TABLE student_records ADD COLUMN IF NOT EXISTS source_row_number INTEGER;"))
                     conn.commit()
                     logger.info("Added missing column 'source_row_number' to 'student_records'.")
+
+                conn.execute(text("ALTER TABLE import_batches ADD COLUMN IF NOT EXISTS storage_path VARCHAR(512);"))
+                conn.execute(text("ALTER TABLE import_batches ADD COLUMN IF NOT EXISTS file_size_bytes INTEGER;"))
+                conn.commit()
         except Exception as exc:
-            logger.error(f"Failed to inspect or alter 'student_records' table: {exc}", exc_info=True)
+            logger.error(f"Failed to inspect or alter database tables: {exc}", exc_info=True)
             raise
 
         # 2. Check for legacy duplicates in import_batches before creating index

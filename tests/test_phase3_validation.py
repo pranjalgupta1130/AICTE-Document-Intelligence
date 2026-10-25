@@ -448,3 +448,89 @@ def test_match_candidate_symmetric_deduplication_and_repeated_validation(client)
     matches_a = client.get(f"/api/v1/batches/{batch_a_id}/matches", headers={"Authorization": f"Bearer {token_apex}"}).json()["items"]
     assert len(matches_a) == 1
     assert matches_a[0]["id"] == match_id
+
+
+def test_multiple_blocking_findings_on_single_record_count_semantics(client):
+    """
+    Verify that a single record with multiple blocking findings (e.g. short name + malformed APAAR)
+    only counts as 1 error row and does NOT double-subtract from valid_records count.
+    Total: 2 records. Record 1: 2 blocking findings. Record 2: 0 findings (100% valid).
+    Expected: valid_records == 1, error_rows == 1, total_records == 2.
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    csv_data = (
+        "institution_student_id,student_name,apaar_id,programme_id,academic_year\n"
+        "APEX-MULTI-01,A,12345,PROG-001-CSE,2026-2027\n"  # 1 char name (< 2 chars) AND malformed APAAR (5 digits)
+        "APEX-MULTI-02,Rajesh Kumar,987654321012,PROG-001-CSE,2026-2027\n"  # Valid record
+    )
+    files = {"file": ("multi_err_test.csv", csv_data, "text/csv")}
+    import_res = client.post("/api/v1/imports", headers={"Authorization": f"Bearer {token}"}, files=files, data={"academic_year": "2026-2027"})
+    assert import_res.status_code == 200
+    batch_id = import_res.json()["batch_id"]
+
+    val_res = client.post(f"/api/v1/batches/{batch_id}/validate", headers={"Authorization": f"Bearer {token}"})
+    assert val_res.status_code == 200
+    val_data = val_res.json()
+    summary = val_data["validation_summary"]
+
+    assert summary["total_records"] == 2
+    # Distinct invalid records is 1, so valid_records must be exactly 1!
+    assert summary["valid_records"] == 1
+    # Error count represents total blocking findings (at least 2 findings on record 1)
+    assert summary["error_count"] >= 2
+
+    # Check batch model persistence
+    db = SessionLocal()
+    try:
+        b = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
+        assert b.total_rows == 2
+        assert b.valid_rows == 1
+        assert b.error_rows == 1
+    finally:
+        db.close()
+
+
+def test_batch_validation_http_400_when_no_persisted_records(client):
+    """
+    Validate that triggering validation on a batch with 0 persisted student records
+    (e.g. all rows rejected during import due to missing roll number / unapproved programme)
+    returns HTTP 400 with the structured AppException envelope containing code 'EMPTY_BATCH'
+    and a descriptive message.
+    """
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    # All rows have missing student roll number -> 0 persisted student records
+    csv_data = (
+        "institution_student_id,student_name,programme_id,academic_year\n"
+        ",Missing Roll Student 1,PROG-001-CSE,2026-2027\n"
+        ",Missing Roll Student 2,PROG-001-CSE,2026-2027\n"
+    )
+    files = {"file": ("all_rejected.csv", csv_data, "text/csv")}
+    import_res = client.post(
+        "/api/v1/imports",
+        headers={"Authorization": f"Bearer {token}"},
+        files=files,
+        data={"academic_year": "2026-2027"}
+    )
+    assert import_res.status_code == 200
+    batch_id = import_res.json()["batch_id"]
+    assert import_res.json()["valid_rows"] == 0
+    assert import_res.json()["error_rows"] == 2
+
+    # Validation on this batch must return HTTP 400
+    val_res = client.post(f"/api/v1/batches/{batch_id}/validate", headers={"Authorization": f"Bearer {token}"})
+    assert val_res.status_code == 400
+    val_err = val_res.json()
+    assert "error" in val_err
+    assert val_err["error"]["code"] == "EMPTY_BATCH"
+    assert "no persisted student records" in val_err["error"]["message"]
+
+
+def test_batch_validation_http_404_when_batch_not_found(client):
+    """Validate that triggering validation on non-existent batch returns HTTP 404 with error envelope."""
+    token = get_auth_token(client, "apex_operator@apex.edu.in")
+    val_res = client.post("/api/v1/batches/NON-EXISTENT-BATCH-999/validate", headers={"Authorization": f"Bearer {token}"})
+    assert val_res.status_code == 404
+    val_err = val_res.json()
+    assert "error" in val_err
+    assert val_err["error"]["code"] == "RESOURCE_NOT_FOUND"
+

@@ -15,6 +15,9 @@ from backend.app.models.user import User
 from backend.app.models.validation import ValidationFinding
 from backend.app.schemas.workflows import (
     AICTEDashboardMetrics,
+    BatchReviewDecision,
+    BatchReviewRequest,
+    BatchReviewResponse,
     BatchSubmitRequest,
     BatchSubmitResponse,
     FindingReviewRequest,
@@ -233,6 +236,88 @@ def review_match_candidate(
     db.add(audit)
     db.commit()
     return candidate
+
+def review_batch(
+    db: Session,
+    batch_id: str,
+    current_user: User,
+    request: BatchReviewRequest
+) -> BatchReviewResponse:
+    """
+    Record an AICTE reviewer decision on an institutional import batch.
+    - AICTE_ADMIN or DEMO_ADMIN only.
+    - Valid transitions:
+        - UNDER_REVIEW: from SUBMITTED
+        - ACCEPTED, REJECTED, NEEDS_CORRECTION: from SUBMITTED or UNDER_REVIEW
+    - Statutory guard: ACCEPTED is prohibited if batch has error_rows > 0 or unresolved BLOCKING_ERROR findings.
+    - Persists decision, updates batch, and records an immutable AuditEvent.
+    """
+    if current_user.role not in (UserRole.AICTE_ADMIN, UserRole.DEMO_ADMIN):
+        raise PermissionDeniedError(f"Role '{current_user.role.value}' is not authorized to perform central batch review.")
+
+    batch = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
+    if not batch:
+        raise NotFoundError(f"ImportBatch '{batch_id}' was not found.")
+
+    prev_status = batch.status
+
+    # Validate state transition
+    valid = False
+    if request.decision == BatchReviewDecision.UNDER_REVIEW:
+        valid = (batch.status == BatchStatus.SUBMITTED)
+    elif request.decision in (BatchReviewDecision.ACCEPTED, BatchReviewDecision.REJECTED, BatchReviewDecision.NEEDS_CORRECTION):
+        valid = (batch.status in (BatchStatus.SUBMITTED, BatchStatus.UNDER_REVIEW))
+
+    if not valid:
+        raise AppException(
+            code="INVALID_STATE_TRANSITION",
+            message=f"Cannot transition batch '{batch_id}' from '{batch.status.value}' to '{request.decision.value}'.",
+            status_code=400
+        )
+
+    # Statutory blocking error check for approval
+    if request.decision == BatchReviewDecision.ACCEPTED:
+        open_blocking_findings = db.query(ValidationFinding).filter(
+            ValidationFinding.batch_id == batch_id,
+            ValidationFinding.status == FindingStatus.OPEN,
+            ValidationFinding.severity == FindingSeverity.BLOCKING_ERROR
+        ).count()
+
+        if open_blocking_findings > 0 or batch.error_rows > 0:
+            raise AppException(
+                code="APPROVAL_BLOCKED_ERRORS",
+                message=f"Batch '{batch_id}' cannot be approved: {open_blocking_findings} unresolved blocking errors exist.",
+                status_code=400
+            )
+
+    now = datetime.now(timezone.utc)
+    batch.status = BatchStatus(request.decision.value)
+    batch.updated_at = now
+
+    audit = AuditEvent(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        actor_role=current_user.role.value,
+        institution_id=batch.institution_id,
+        action=AuditAction.REVIEW_DECISION,
+        object_type="IMPORT_BATCH",
+        object_id=batch.id,
+        outcome="SUCCESS",
+        details=f"Batch review decision '{request.decision.value}' recorded (previous: {prev_status.value}). Reason: {request.reason}"
+    )
+    db.add(audit)
+    db.commit()
+
+    return BatchReviewResponse(
+        batch_id=batch.id,
+        institution_id=batch.institution_id,
+        previous_status=prev_status,
+        status=batch.status,
+        reviewed_by=current_user.email,
+        reviewed_at=now,
+        reason=request.reason,
+        message=f"Batch '{batch.id}' successfully transitioned from '{prev_status.value}' to '{batch.status.value}'."
+    )
 
 # ------------------------------------------------------------------------------
 # 3. Dashboard Metrics Services

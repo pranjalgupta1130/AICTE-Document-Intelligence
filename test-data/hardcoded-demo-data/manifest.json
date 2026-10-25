@@ -1,0 +1,220 @@
+{
+  "version": "1.0.0",
+  "exported_at": "2026-10-25T14:07:00Z",
+  "datasets": [
+    {
+      "source_file": "frontend/src/pages/InstitutionDashboardPage.tsx",
+      "constant_name": "DEPARTMENT_DATA",
+      "output_file": "department_data.csv",
+      "record_count": 4,
+      "columns": [
+        "id",
+        "code",
+        "name",
+        "sanctioned",
+        "supernumerary",
+        "actualRegular",
+        "actualSuper",
+        "totalEnrolled",
+        "utilization",
+        "hasViolation",
+        "excessCount",
+        "statusText"
+      ],
+      "sha256": "0fa159ccd6e7976afed9a61f13ede9863a5d9badc950daf78f3435ac9bf45681"
+    },
+    {
+      "source_file": "frontend/src/pages/BulkImportValidationPage.tsx",
+      "constant_name": "INITIAL_DIAGNOSTICS",
+      "output_file": "initial_diagnostics.csv",
+      "record_count": 8,
+      "columns": [
+        "row",
+        "studentId",
+        "apaarId",
+        "category",
+        "status",
+        "note"
+      ],
+      "sha256": "b32c30c7a4b9da173502d745cdc86e6ebdae6442de057ce2467e9fb3aa3b1b34"
+    },
+    {
+      "source_file": "frontend/src/pages/DataQualityFindingsPage.tsx",
+      "constant_name": "INITIAL_FINDINGS",
+      "output_file": "initial_findings.csv",
+      "record_count": 5,
+      "columns": [
+        "row",
+        "studentId",
+        "name",
+        "branch",
+        "rule",
+        "severity",
+        "field",
+        "explanation",
+        "suggestedAction",
+        "inputLabel",
+        "inputHint",
+        "placeholder",
+        "defaultVal"
+      ],
+      "sha256": "e578b7cef75430edd3e156795257ec20b602d6fd1ea40a309fb06e3fcb5c8cbc"
+    },
+    {
+      "source_file": "frontend/src/pages/StudentRecordCertificatePage.tsx",
+      "constant_name": "MOCK_PROFILES",
+      "output_file": "mock_profiles.csv",
+      "record_count": 3,
+      "columns": [
+        "apaarId",
+        "instStudentId",
+        "fullName",
+        "initials",
+        "institution",
+        "institutionCode",
+        "programme",
+        "faculty",
+        "batch",
+        "term",
+        "enrolmentStatus",
+        "seatQuota",
+        "verificationStatus",
+        "verificationRef",
+        "verificationHash",
+        "signatureHash",
+        "signedDate",
+        "systemId",
+        "auditTrailJson"
+      ],
+      "sha256": "c5f8bf56fef35e3a408891815bd4ab9a01767fe27ec56ff6aa74b27ac6df51db",
+      "nested_relations": [
+        {
+          "relation_name": "auditTrail",
+          "output_file": "mock_profile_audit_trail.csv",
+          "record_count": 8,
+          "columns": [
+            "apaarId",
+            "auditOrder",
+            "timestamp",
+            "eventType",
+            "icon",
+            "iconColor",
+            "actor",
+            "actionDetails",
+            "complianceStatus",
+            "complianceBadgeClass"
+          ],
+          "foreign_key": "apaarId",
+          "sha256": "e1e1ec74d62b409bdc26a81ed57b32dd00a4f5d0ebea029795d38a5049c20fdb"
+        }
+      ]
+    },
+    {
+      "source_file": "frontend/src/pages/AicteCentralReviewPage.tsx",
+      "constant_name": "TRIAGE_CASES",
+      "output_file": "triage_cases.csv",
+      "record_count": 3,
+      "columns": [
+        "id",
+        "ref",
+        "apaarId",
+        "detectedAt",
+        "flagType",
+        "correlation_apaarMatch",
+        "correlation_dobMatch",
+        "correlation_fuzzyNameMatch",
+        "instA_code",
+        "instA_name",
+        "instA_location",
+        "instA_type",
+        "instA_studentName",
+        "instA_program",
+        "instA_timestamp",
+        "instA_quota",
+        "instA_tuitionFee",
+        "instA_status",
+        "instA_officer",
+        "instB_code",
+        "instB_name",
+        "instB_location",
+        "instB_type",
+        "instB_studentName",
+        "instB_program",
+        "instB_timestamp",
+        "instB_quota",
+        "instB_tuitionFee",
+        "instB_status",
+        "instB_note",
+        "defaultJustification"
+      ],
+      "sha256": "b197cd1bc8225c4d59f0533cb643985243067eb5c270f8971e2681a22951d71d"
+    },
+    {
+      "source_file": "frontend/src/pages/AuditLogsReportsPage.tsx",
+      "constant_name": "INITIAL_AUDIT_EVENTS",
+      "output_file": "initial_audit_events.csv",
+      "record_count": 8,
+      "columns": [
+        "id",
+        "timestamp",
+        "category",
+        "subCategory",
+        "actor",
+        "actorOrg",
+        "actorIp",
+        "targetEntity",
+        "targetSub",
+        "targetDetail",
+        "outcome",
+        "notes",
+        "hashShort",
+        "hashFull",
+        "role"
+      ],
+      "sha256": "f0be238393b8a81d52a341ee44653774549d5202a1b9fa4edaf4be804ce79ecd"
+    },
+    {
+      "source_file": "frontend/src/pages/AicteCentralReviewPage.tsx",
+      "constant_name": "INITIAL_BREACH_RECORDS",
+      "output_file": "initial_breach_records.csv",
+      "record_count": 6,
+      "columns": [
+        "pid",
+        "name",
+        "location",
+        "course",
+        "affiliation",
+        "cap",
+        "intake",
+        "excess",
+        "excessTag",
+        "citation",
+        "citationDesc",
+        "actionText",
+        "actionStyle",
+        "state"
+      ],
+      "sha256": "612aff057839cf1495b4b172fcac369abe4fae0db51e19c1e67810b160d96413"
+    },
+    {
+      "source_file": "frontend/src/data/rolesData.ts",
+      "constant_name": "ROLE_DATASETS",
+      "output_file": "role_datasets.csv",
+      "record_count": 5,
+      "columns": [
+        "key",
+        "shortTitle",
+        "subtitle",
+        "icon",
+        "title",
+        "tag",
+        "tagClass",
+        "description",
+        "email",
+        "pid",
+        "pwd"
+      ],
+      "sha256": "1937827d00f2a797485f8e300d3f283d9cc75ea9b2c1267f09d85e86fade24e2"
+    }
+  ]
+}

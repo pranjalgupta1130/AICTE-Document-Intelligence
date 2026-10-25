@@ -1,0 +1,2 @@
+institution_student_id,student_name,apaar_id,programme_id,academic_year,is_nri,seat_type
+APEX-NRI-001,NRI Candidate,987654321012,PROG-001-CSE,2026-2027,TRUE,REGULAR

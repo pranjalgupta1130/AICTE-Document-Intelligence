@@ -1,0 +1,4 @@
+institution_student_id,student_name,apaar_id,programme_id,academic_year,gender,seat_type,enrolment_status
+APEX-TEST-001,Student One,111122223333,PROG-001-CSE,2026-2027,Male,Convener Quota,Admitted
+APEX-TEST-002,Student Two,111122223334,PROG-001-CSE,2026-2027,Female,Management Quota,Admitted
+APEX-TEST-003,Student Three,,PROG-001-CSE,2026-2027,Other,Supernumerary (TFW),Admitted

@@ -7,6 +7,7 @@ from backend.app.schemas.imports import (
     RowParseError,
     ImportCommitResponse,
     BatchRead,
+    StudentRecordRead,
     ValidationFindingRead
 )
 

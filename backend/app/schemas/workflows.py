@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -41,6 +42,26 @@ class FindingReviewResponse(BaseModel):
 class MatchCandidateReviewRequest(BaseModel):
     status: MatchStatus = Field(..., description="Review outcome: CONFIRMED_DUPLICATE or DISMISSED")
     resolution_reason: str = Field(..., min_length=3, max_length=512, description="Mandatory reason for decision")
+
+class BatchReviewDecision(str, Enum):
+    UNDER_REVIEW = "UNDER_REVIEW"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+    NEEDS_CORRECTION = "NEEDS_CORRECTION"
+
+class BatchReviewRequest(BaseModel):
+    decision: BatchReviewDecision = Field(..., description="Review outcome: UNDER_REVIEW, ACCEPTED, REJECTED, or NEEDS_CORRECTION")
+    reason: str = Field(..., min_length=3, max_length=512, description="Mandatory justification/reason for audit trail")
+
+class BatchReviewResponse(BaseModel):
+    batch_id: str
+    institution_id: str
+    previous_status: BatchStatus
+    status: BatchStatus
+    reviewed_by: str
+    reviewed_at: datetime
+    reason: str
+    message: str
 
 # ------------------------------------------------------------------------------
 # Dashboard Metrics Schemas

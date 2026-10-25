@@ -9,7 +9,7 @@ from backend.app.core.config import settings
 
 STANDARD_FIELDS = {
     "apaar_id": ["apaar_id", "apaar", "apaar id", "student_apaar_id", "apaar_number", "apaar no"],
-    "institution_student_id": ["institution_student_id", "student_id", "roll_no", "roll_number", "registration_no", "reg_no", "enrollment_no", "college_id"],
+    "institution_student_id": ["institution_student_id", "inst_student_id", "inst student id", "student_id", "roll_no", "roll_number", "registration_no", "reg_no", "enrollment_no", "college_id"],
     "student_name": ["student_name", "name", "full_name", "candidate_name", "student name"],
     "academic_year": ["academic_year", "year", "session", "batch_year", "admission_year", "academic year"],
     "programme_id": ["programme_id", "program_id", "programme", "program", "course", "course_id", "branch", "discipline"],

@@ -40,6 +40,7 @@ class Settings(BaseModel):
     MAX_CELL_LENGTH: int = int(os.getenv("MAX_CELL_LENGTH", 10000))                         # 10,000 chars per cell
     MAX_ZIP_ENTRIES: int = int(os.getenv("MAX_ZIP_ENTRIES", 100))                           # XLSX zip bomb entry limit
     MAX_UNCOMPRESSED_XLSX_BYTES: int = int(os.getenv("MAX_UNCOMPRESSED_XLSX_BYTES", 100 * 1024 * 1024)) # 100 MB decompressed limit
+    UPLOAD_STORAGE_DIR: str = os.getenv("UPLOAD_STORAGE_DIR", "./uploaded_datasets")
 
     # Validation Engine Configuration (Phase 3)
     APAAR_ID_LENGTH: int = int(os.getenv("APAAR_ID_LENGTH", 12))

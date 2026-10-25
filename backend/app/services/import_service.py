@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -5,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
+from backend.app.core.config import settings
 from backend.app.core.errors import AppException, NotFoundError, PermissionDeniedError
 from backend.app.core.permissions import enforce_institution_scope
 from backend.app.models.audit import AuditEvent
@@ -402,6 +404,22 @@ def commit_import_data(
     committed = False
     last_error: Optional[Exception] = None
 
+    # Secure file retention
+    storage_relative_path: Optional[str] = None
+    file_bytes_len = len(content)
+    try:
+        storage_dir = os.path.abspath(settings.UPLOAD_STORAGE_DIR)
+        os.makedirs(storage_dir, exist_ok=True)
+        # Generate safe server-side storage filename: {batch_id}_{uuid}.dat
+        safe_stored_name = f"{batch_id}_{uuid.uuid4().hex[:8]}.dat"
+        full_storage_path = os.path.join(storage_dir, safe_stored_name)
+        with open(full_storage_path, "wb") as f_out:
+            f_out.write(content)
+        storage_relative_path = safe_stored_name
+    except Exception as exc:
+        # Non-fatal file retention error; log warning but don't prevent batch record creation
+        storage_relative_path = None
+
     for attempt in range(max_commit_retries):
         try:
             next_version = allocate_concurrency_safe_batch_version(db, scoped_inst_id, resolved_academic_year)
@@ -416,7 +434,9 @@ def commit_import_data(
                 total_rows=len(rows),
                 valid_rows=valid_count,
                 error_rows=error_count,
-                warning_rows=warning_count
+                warning_rows=warning_count,
+                storage_path=storage_relative_path,
+                file_size_bytes=file_bytes_len
             )
             db.add(batch)
 

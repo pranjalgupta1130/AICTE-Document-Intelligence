@@ -1,11 +1,11 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AuthSession } from '../types/auth';
-import { batchService, BackendValidationSummary } from '../services/api';
+import { batchService, institutionService, InstitutionItem, BackendValidationSummary } from '../services/api';
 
 interface BulkImportValidationPageProps {
   session?: AuthSession | null;
   onLogout?: () => void;
-  onNavigateTab?: (tab: string) => void;
+  onNavigateTab?: (tab: string, param?: string) => void;
 }
 
 interface DiagnosticRecord {
@@ -24,7 +24,7 @@ const INITIAL_DIAGNOSTICS: DiagnosticRecord[] = [
     apaarId: '9082-1144-8821',
     category: 'REGULAR',
     status: 'VALID',
-    note: 'Format OK • Checksum verified against UIDAI/ABC Mock Registry',
+    note: 'Format OK • Syntactic checksum verified against Mock APAAR Adapter (Simulated • is_official=False)',
   },
   {
     row: 28,
@@ -32,7 +32,7 @@ const INITIAL_DIAGNOSTICS: DiagnosticRecord[] = [
     apaarId: '9082-4412-8821',
     category: 'REGULAR',
     status: 'VALID',
-    note: 'Identity verified against Digilocker live seed (Siddharth R. Iyer)',
+    note: 'Simulated verification via Mock APAAR Adapter (Siddharth R. Iyer • is_official=False)',
   },
   {
     row: 42,
@@ -105,6 +105,64 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
   const [totalRowsCount, setTotalRowsCount] = useState<number>(1420);
   const [validationSummary, setValidationSummary] = useState<BackendValidationSummary | null>(null);
 
+  const [ingestionSummary, setIngestionSummary] = useState<{
+    total: number;
+    valid: number;
+    errors: number;
+    warnings: number;
+    hasPersistedRecords: boolean;
+  } | null>(null);
+
+  // Institution Selection & Scoping States
+  const [institutionsList, setInstitutionsList] = useState<InstitutionItem[]>([]);
+  const [isLoadingInstitutions, setIsLoadingInstitutions] = useState<boolean>(false);
+  const [targetInstitutionId, setTargetInstitutionId] = useState<string>(() => {
+    return session?.instCode && session.instCode !== 'HQ-STATUTORY-DELHI' ? session.instCode : '';
+  });
+
+  const isAdministrativeUser = useMemo(() => {
+    const roleKey = session?.role;
+    const roleTitle = (session?.roleTitle || '').toUpperCase();
+    return (
+      roleKey === 'reviewer' ||
+      roleKey === 'evaluator' ||
+      roleTitle.includes('AICTE') ||
+      roleTitle.includes('DEMO') ||
+      roleTitle.includes('EVALUATOR') ||
+      roleTitle.includes('REVIEWER')
+    );
+  }, [session?.role, session?.roleTitle]);
+
+  // Fetch available institutions for administrative users
+  useEffect(() => {
+    let isMounted = true;
+    if (isAdministrativeUser) {
+      setIsLoadingInstitutions(true);
+      institutionService
+        .listInstitutions()
+        .then((res) => {
+          if (isMounted) {
+            setInstitutionsList(res.items || []);
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setInstitutionsList([]);
+          }
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsLoadingInstitutions(false);
+          }
+        });
+    } else if (session?.instCode && session.instCode !== 'HQ-STATUTORY-DELHI') {
+      setTargetInstitutionId(session.instCode);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [isAdministrativeUser, session?.instCode]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (msg: string) => {
@@ -118,10 +176,10 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
     const csvContent =
       'data:text/csv;charset=utf-8,' +
       [
-        'APAAR_ID,INST_STUDENT_ID,PROGRAMME,ACADEMIC_YEAR,SEAT_TYPE,NRI_OCI_FN,ADMISSION_STATUS',
-        '9082-1144-8821,NITT-2025-001,BTECH-CSE-01,2025-2026,REGULAR,,CONFIRMED',
-        '9082-4412-8821,NITT-2025-002,BTECH-CSE-01,2025-2026,REGULAR,,CONFIRMED',
-        '8812-7491-1029,NITT-2025-003,BTECH-ECE-02,2025-2026,EWS,,CONFIRMED',
+        'apaar_id,institution_student_id,student_name,academic_year,programme_id,enrolment_status,seat_type,is_nri,is_oci,is_fn',
+        '9082-1144-8821,STU-2026-001,Aarav Sharma,2026-2027,PROG-001-CSE,ENROLLED,REGULAR,FALSE,FALSE,FALSE',
+        '9082-4412-8821,STU-2026-002,Diya Patel,2026-2027,PROG-001-CSE,ENROLLED,SUPERNUMERARY_EWS,FALSE,FALSE,FALSE',
+        '8812-7491-1029,STU-2026-003,Rohan Verma,2026-2027,PROG-001-ECE,ENROLLED,REGULAR,FALSE,FALSE,FALSE',
       ].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
@@ -130,7 +188,7 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('Downloaded official AICTE APH Batch Template (.CSV)');
+    showToast('Downloaded official AICTE APAAR Batch Template (.CSV)');
   };
 
   const sanitizeCsvValue = (val: string | number): string => {
@@ -169,6 +227,11 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
   };
 
   const handleTriggerFileSelect = () => {
+    if (isAdministrativeUser && !targetInstitutionId) {
+      setUploadError('Target institution must be specified for administrative import. Please select an institution before selecting a dataset.');
+      showToast('Validation Error: Target institution required.');
+      return;
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
       fileInputRef.current.click();
@@ -178,6 +241,14 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Validate target institution for administrative imports
+    const effectiveInstitutionId = targetInstitutionId || (session?.instCode && session.instCode !== 'HQ-STATUTORY-DELHI' ? session.instCode : undefined);
+    if (isAdministrativeUser && !effectiveInstitutionId) {
+      setUploadError('Target institution must be specified for administrative import. Please select a target institution from the selector.');
+      showToast('Error: Target institution must be specified.');
+      return;
+    }
 
     // File validation
     const fname = file.name.toLowerCase();
@@ -200,15 +271,71 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
 
     try {
       showToast(`Uploading ${file.name} to AICTE Ingestion Pipeline...`);
-      const commitRes = await batchService.uploadImportFile(file, '2026-2027');
+      const commitRes = await batchService.uploadImportFile(
+        file,
+        '2026-2027',
+        undefined,
+        effectiveInstitutionId
+      );
 
       setActiveBatchId(commitRes.batch_id);
       setIsLiveBatch(true);
       setTotalRowsCount(commitRes.total_rows);
+      setIngestionSummary({
+        total: commitRes.total_rows,
+        valid: commitRes.valid_rows,
+        errors: commitRes.error_rows,
+        warnings: commitRes.warning_rows,
+        hasPersistedRecords: commitRes.valid_rows > 0,
+      });
 
-      showToast(`Batch created: ${commitRes.batch_id} (${commitRes.total_rows} rows ingested).`);
+      // If all rows were rejected during ingestion, do NOT trigger validation (which requires persisted records)
+      if (commitRes.valid_rows === 0) {
+        setUploadError(
+          `Ingestion Warning: All ${commitRes.total_rows} rows were rejected during parsing due to critical blocking errors. ` +
+          `No student records could be persisted into the batch. Review the row-level diagnostic findings below before re-uploading.`
+        );
+        showToast(`Ingestion failed: 0 of ${commitRes.total_rows} records persisted.`);
 
-      // Immediately trigger deterministic validation
+        // Fetch the preserved ingestion-stage findings so the user immediately sees why rows failed
+        const findingsRes = await batchService.getBatchFindings(commitRes.batch_id, 100);
+        const mappedDiagnostics: DiagnosticRecord[] = findingsRes.items.map((f, idx) => {
+          let status: 'VALID' | 'BLOCKING' | 'DUPLICATE' | 'WARNING' = 'VALID';
+          if (f.severity === 'BLOCKING_ERROR') {
+            status = f.rule_code.includes('DUP') ? 'DUPLICATE' : 'BLOCKING';
+          } else if (f.severity === 'WARNING') {
+            status = 'WARNING';
+          }
+          return {
+            row: f.row_number || (idx + 1),
+            studentId: f.actual_value || `ROW-${f.row_number || (idx + 1)}`,
+            apaarId: f.field_name === 'apaar_id' ? f.actual_value || '[N/A]' : '[N/A]',
+            category: f.field_name ? f.field_name.toUpperCase() : 'PARSING_ERROR',
+            status,
+            note: `${f.rule_code}: ${f.message}${f.suggested_action ? ` • Suggestion: ${f.suggested_action}` : ''}`,
+          };
+        });
+
+        if (mappedDiagnostics.length > 0) {
+          setDiagnosticsList(mappedDiagnostics);
+        }
+
+        // Set summary counters directly from ingestion output
+        setValidationSummary({
+          total_records: commitRes.total_rows,
+          valid_records: 0,
+          error_count: commitRes.error_rows,
+          warning_count: commitRes.warning_rows,
+          info_count: 0,
+          intake_exceeded_count: 0,
+          duplicate_candidate_count: 0,
+        });
+        return;
+      }
+
+      showToast(`Batch created: ${commitRes.batch_id} (${commitRes.valid_rows} of ${commitRes.total_rows} rows persisted).`);
+
+      // Immediately trigger deterministic validation on the persisted records
       await triggerBatchValidation(commitRes.batch_id);
     } catch (err: any) {
       console.error('File upload failed:', err);
@@ -266,7 +393,9 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
       showToast(`Validation complete: Status is ${valRes.status}. Found ${valRes.findings_count} findings.`);
     } catch (err: any) {
       console.error('Validation failed:', err);
-      showToast(`Validation error: ${err?.message || 'Failed to validate batch'}`);
+      const errorMsg = err?.message || 'Failed to validate batch';
+      setUploadError(`Validation failed for Batch ${batchId}: ${errorMsg}`);
+      showToast(`Validation error: ${errorMsg}`);
     } finally {
       setIsValidating(false);
     }
@@ -328,6 +457,23 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
     }
     return diagnosticsList.filter((d) => d.status === filterType);
   }, [filterType, diagnosticsList]);
+
+  // Dynamically compute rule counts for Bento insight cards from live diagnostics
+  const { r6Count, r11Count, r4Count } = useMemo(() => {
+    let r6 = 0;
+    let r11 = 0;
+    let r4 = 0;
+    for (const d of diagnosticsList) {
+      if (d.note.includes('RULE-APAAR') || d.note.includes('Rule R6')) {
+        r6++;
+      } else if (d.note.includes('RULE-DUP') || d.note.includes('Rule R11')) {
+        r11++;
+      } else if (d.note.includes('RULE-CAT') || d.note.includes('Rule R4')) {
+        r4++;
+      }
+    }
+    return { r6Count: r6, r11Count: r11, r4Count: r4 };
+  }, [diagnosticsList]);
 
   return (
     <div className="tricolor-slant-bg font-body-md text-on-surface antialiased min-h-screen flex flex-col relative selection:bg-secondary/20">
@@ -438,6 +584,7 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
           {[
             { id: 'dashboard', label: 'Institution Dashboard' },
             { id: 'import', label: 'Bulk Import & Validation' },
+            { id: 'history', label: 'Import History & Datasets' },
             { id: 'findings', label: 'Data Quality & Findings' },
             { id: 'aicte-review', label: 'AICTE Central Review' },
             { id: 'records', label: 'Student Record & Certificate' },
@@ -512,6 +659,47 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
               </div>
 
               <div className="flex items-center gap-space-md self-start md:self-auto flex-wrap">
+                {/* Administrative Target Institution Selector */}
+                {isAdministrativeUser ? (
+                  <div className="flex items-center gap-space-xs bg-surface-card border border-border-strong px-space-md py-space-xs rounded-lg shadow-sm">
+                    <span className="material-symbols-outlined text-secondary text-[20px]">account_balance</span>
+                    <div className="flex flex-col">
+                      <label htmlFor="target-institution-select" className="text-[10px] font-bold uppercase tracking-wider text-outline leading-tight">
+                        Target Institution <span className="text-status-error">*</span>
+                      </label>
+                      <select
+                        id="target-institution-select"
+                        value={targetInstitutionId}
+                        onChange={(e) => {
+                          setTargetInstitutionId(e.target.value);
+                          if (uploadError) setUploadError(null);
+                        }}
+                        disabled={isUploading || isValidating || isLoadingInstitutions}
+                        className="bg-transparent font-title-sm text-title-sm font-semibold text-primary focus:outline-none cursor-pointer pr-space-md"
+                      >
+                        <option value="">{isLoadingInstitutions ? 'Loading institutions...' : '-- Select Target Institution --'}</option>
+                        {institutionsList.map((inst) => (
+                          <option key={inst.id} value={inst.id}>
+                            {inst.name} ({inst.id})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-space-xs bg-surface-subtle border border-border-subtle px-space-md py-space-xs rounded-lg">
+                    <span className="material-symbols-outlined text-primary text-[20px]">domain</span>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-outline leading-tight">
+                        Institution Context
+                      </span>
+                      <span className="text-title-sm font-bold text-primary">
+                        {session?.instCode || 'Apex Institute (INST-001)'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Hidden Real File Input */}
                 <input
                   type="file"
@@ -541,6 +729,15 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                     file_download
                   </span>
                   <span>Official Template (XLSX)</span>
+                </button>
+                <button
+                  onClick={() => onNavigateTab?.('history')}
+                  className="inline-flex items-center gap-space-xs bg-surface-card border border-border-strong text-primary px-space-md py-space-sm rounded-lg hover:bg-surface-subtle transition-colors font-title-md text-title-md shadow-sm cursor-pointer"
+                  title="View Historical Batches & Datasets"
+                  type="button"
+                >
+                  <span className="material-symbols-outlined text-[18px] text-secondary">history</span>
+                  <span>Import History</span>
                 </button>
                 <button
                   onClick={() => setShowComplianceModal(true)}
@@ -607,7 +804,7 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                       Rule Verification
                     </span>
                     <span className="font-body-sm text-body-sm text-on-surface-variant block truncate mt-space-2xs">
-                      1,420 rows verified
+                      {totalRowsCount.toLocaleString()} rows verified
                     </span>
                   </div>
                 </div>
@@ -658,7 +855,53 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-space-xl py-space-lg">
+                  {/* Ingestion Intake Ledger Breakdown */}
+                  {ingestionSummary && (
+                    <div className="mt-space-sm p-space-sm rounded bg-surface-subtle border border-border-subtle grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div>
+                        <span className="text-outline uppercase block font-semibold text-[10px]">Received</span>
+                        <span className="font-bold text-primary text-sm">{ingestionSummary.total} Rows</span>
+                      </div>
+                      <div>
+                        <span className="text-outline uppercase block font-semibold text-[10px]">Persisted</span>
+                        <span className="font-bold text-status-verified text-sm">{ingestionSummary.valid} Rows</span>
+                      </div>
+                      <div>
+                        <span className="text-outline uppercase block font-semibold text-[10px]">Rejected</span>
+                        <span className={`font-bold text-sm ${ingestionSummary.errors > 0 ? 'text-status-error' : 'text-outline'}`}>
+                          {ingestionSummary.errors} Rows
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-outline uppercase block font-semibold text-[10px]">Warnings</span>
+                        <span className="font-bold text-status-review text-sm">{ingestionSummary.warnings} Flags</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-lg py-space-lg">
+                    <div>
+                      <span className="font-label-sm text-label-sm text-outline block uppercase tracking-wider">
+                        Target Institution
+                      </span>
+                      <span
+                        className="font-title-md text-title-md text-primary font-bold truncate block mt-space-2xs"
+                        title={
+                          institutionsList.find((i) => i.id === targetInstitutionId)?.name ||
+                          targetInstitutionId ||
+                          session?.instCode ||
+                          'Apex Institute of Technology'
+                        }
+                      >
+                        {institutionsList.find((i) => i.id === targetInstitutionId)?.name ||
+                          targetInstitutionId ||
+                          session?.instCode ||
+                          'Apex Institute (INST-001)'}
+                      </span>
+                      <span className="font-body-sm text-body-sm text-secondary font-semibold mt-space-2xs block">
+                        AY 2026-2027 • {targetInstitutionId || session?.instCode || 'INST-001'}
+                      </span>
+                    </div>
                     <div>
                       <span className="font-label-sm text-label-sm text-outline block uppercase tracking-wider">
                         Target Dataset
@@ -688,9 +931,19 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                       <span className="font-label-sm text-label-sm text-outline block uppercase tracking-wider">
                         Batch ID &amp; Timestamp
                       </span>
-                      <span className="font-code-sm text-code-sm text-primary font-bold block truncate mt-space-2xs">
-                        {activeBatchId || 'BATCH-2025-NITTRICHY-004'}
-                      </span>
+                      {activeBatchId ? (
+                        <button
+                          onClick={() => onNavigateTab?.('history', activeBatchId)}
+                          title="View this batch in Import History"
+                          className="font-code-sm text-code-sm text-secondary font-bold block truncate mt-space-2xs hover:underline cursor-pointer text-left"
+                        >
+                          {activeBatchId} ↗
+                        </button>
+                      ) : (
+                        <span className="font-code-sm text-code-sm text-primary font-bold block truncate mt-space-2xs">
+                          BATCH-2025-NITTRICHY-004
+                        </span>
+                      )}
                       <span className="font-body-sm text-body-sm text-on-surface-variant mt-space-2xs block">
                         {isLiveBatch ? 'Active Live Session' : '12 Oct 2025, 14:32 IST'}
                       </span>
@@ -842,11 +1095,11 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                         ACADEMIC_YEAR
                       </td>
                       <td className="py-space-md px-space-md font-code-sm text-code-sm text-on-surface-variant">
-                        admitted_year
+                        academic_year
                       </td>
                       <td className="py-space-md px-space-md">
                         <span className="font-code-sm text-code-sm text-on-surface">
-                          YYYY-YYYY (Active Cohort: 2025-2026)
+                          YYYY-YYYY (Active Cohort: 2026-2027)
                         </span>
                       </td>
                       <td className="py-space-md px-space-md text-right">
@@ -923,30 +1176,45 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-md pb-space-md border-b border-border-subtle">
                 <div>
                   <div className="flex items-center gap-space-xs">
-                    <span className="w-2.5 h-2.5 rounded-full bg-status-verified"></span>
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        isLiveBatch ? 'bg-status-verified animate-pulse' : 'bg-secondary'
+                      }`}
+                    ></span>
                     <h2 className="font-headline-sm text-headline-sm text-primary font-bold">
                       Pre-Validation Verification Console
                     </h2>
+                    <span
+                      className={`ml-2 text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                        isLiveBatch
+                          ? 'bg-status-verified-surface text-status-verified border-status-verified-border'
+                          : 'bg-surface-subtle text-outline border-border-subtle'
+                      }`}
+                    >
+                      {isLiveBatch ? 'LIVE BATCH ACTIVE' : 'SIMULATED DEMO BENCHMARK'}
+                    </span>
                   </div>
                   <p className="font-body-sm text-body-sm text-on-surface-variant pt-space-2xs">
-                    Syntactic checks, mock sovereign adapter responses, and collision diagnostics complete.
+                    {isLiveBatch
+                      ? 'Live execution of rules R1–R12 against backend API with Mock APAAR adapter simulation.'
+                      : 'Sample synthetic dataset demonstrating Verhoeff checks, adapter simulation, and collision diagnostics.'}
                   </p>
                 </div>
                 <div className="flex items-center gap-space-xl">
                   <div className="text-right">
                     <span className="font-label-sm text-label-sm text-outline block uppercase tracking-wider">
-                      Adapter Latency
+                      Adapter Response
                     </span>
                     <span className="font-code-sm text-code-sm text-primary font-semibold">
-                      120ms (MOCK_VERIFIED)
+                      {isLiveBatch ? 'Live Mock Adapter' : '120ms (MOCK_VERIFIED)'}
                     </span>
                   </div>
                   <div className="text-right">
                     <span className="font-label-sm text-label-sm text-outline block uppercase tracking-wider">
-                      Execution Elapsed
+                      Validation Engine
                     </span>
                     <span className="font-code-sm text-code-sm text-primary font-semibold">
-                      1.8s (100% Parsed)
+                      {isLiveBatch ? 'Rules R1–R12 Applied' : '1.8s (100% Parsed)'}
                     </span>
                   </div>
                 </div>
@@ -1252,7 +1520,7 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                 </div>
                 <div className="pt-space-sm border-t border-border-subtle">
                   <span className="font-code-sm text-code-sm text-outline">
-                    Affected: 8 records
+                    Affected: {r6Count} {r6Count === 1 ? 'finding' : 'findings'}
                   </span>
                 </div>
               </div>
@@ -1274,7 +1542,7 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                 </div>
                 <div className="pt-space-sm border-t border-border-subtle">
                   <span className="font-code-sm text-code-sm text-outline">
-                    Affected: 4 collision instances
+                    Affected: {r11Count} {r11Count === 1 ? 'collision instance' : 'collision instances'}
                   </span>
                 </div>
               </div>
@@ -1296,7 +1564,7 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                 </div>
                 <div className="pt-space-sm border-t border-border-subtle">
                   <span className="font-code-sm text-code-sm text-outline">
-                    Affected: 16 warnings flagged
+                    Affected: {r4Count} {r4Count === 1 ? 'warning flagged' : 'warnings flagged'}
                   </span>
                 </div>
               </div>
@@ -1313,7 +1581,15 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                   <span className="material-symbols-outlined text-[18px] text-outline">
                     file_download
                   </span>
-                  <span>Download Error CSV (28 Rows)</span>
+                  <span>
+                    Download Error CSV (
+                    {
+                      diagnosticsList.filter(
+                        (d) => d.status === 'BLOCKING' || d.status === 'DUPLICATE' || d.status === 'WARNING'
+                      ).length
+                    }{' '}
+                    Rows)
+                  </span>
                 </button>
                 <button
                   onClick={handleDiscardBatch}
@@ -1344,13 +1620,26 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
                 )}
 
                 <div className="hidden sm:flex flex-col text-right pr-space-xs">
-                  <span className={`font-label-sm text-label-sm font-bold tracking-wider ${
-                    (validationSummary ? validationSummary.error_count : 12) > 0 ? 'text-status-error' : 'text-status-verified'
-                  }`}>
-                    {validationSummary ? validationSummary.error_count : 12} INGESTION BLOCKERS ACTIVE
+                  <span
+                    className={`font-label-sm text-label-sm font-bold tracking-wider ${
+                      (validationSummary
+                        ? validationSummary.error_count
+                        : diagnosticsList.filter((d) => d.status === 'BLOCKING' || d.status === 'DUPLICATE').length) >
+                      0
+                        ? 'text-status-error'
+                        : 'text-status-verified'
+                    }`}
+                  >
+                    {validationSummary
+                      ? validationSummary.error_count
+                      : diagnosticsList.filter((d) => d.status === 'BLOCKING' || d.status === 'DUPLICATE').length}{' '}
+                    INGESTION BLOCKERS ACTIVE
                   </span>
                   <span className="font-code-sm text-code-sm text-outline mt-space-2xs">
-                    {(validationSummary ? validationSummary.error_count : 12) > 0
+                    {(validationSummary
+                      ? validationSummary.error_count
+                      : diagnosticsList.filter((d) => d.status === 'BLOCKING' || d.status === 'DUPLICATE').length) >
+                    0
                       ? 'Resolution required before Step 4'
                       : 'All records clear for submission'}
                   </span>
@@ -1401,7 +1690,7 @@ export const BulkImportValidationPage: React.FC<BulkImportValidationPageProps> =
               </div>
               <div className="p-3 bg-surface-subtle rounded-lg border border-border-subtle">
                 <div className="font-bold text-primary mb-1">Rule R6: APAAR Identification Mandate</div>
-                <div>All candidates enrolled under AICTE approved courses must possess an active 12-digit APAAR UID mapped against UIDAI tokens.</div>
+                <div>All candidates enrolled under AICTE approved courses must possess a 12-digit APAAR UID conforming to Verhoeff checksum and regex specifications, evaluated via local algorithms and Mock APAAR Adapter (Simulated • Non-Authoritative).</div>
               </div>
               <div className="p-3 bg-surface-subtle rounded-lg border border-border-subtle">
                 <div className="font-bold text-primary mb-1">Rule R11: Zero In-Batch Collisions</div>

@@ -1,0 +1,9 @@
+row,studentId,apaarId,category,status,note
+14,NITT-2025-014,9082-1144-8821,REGULAR,VALID,Format OK • Syntactic checksum verified against Mock APAAR Adapter (Simulated • is_official=False)
+28,NITT-2025-028,9082-4412-8821,REGULAR,VALID,Simulated verification via Mock APAAR Adapter (Siddharth R. Iyer • is_official=False)
+42,NITT-2025-042,[NULL / EMPTY],EWS,BLOCKING,Field Required by Rule R6 - Mandatory APAAR Identifier Non-Null
+61,NITT-2025-061,[MALFORMED_REGEX],TFW,BLOCKING,Syntactic constraint violation: Expected 12-digit format (xxxx-xxxx-xxxx)
+77,NITT-2025-077,8129-3321-9011,REGULAR,DUPLICATE,Collision with Row 108: APAAR Re-assignment Disallowed across records
+108,NITT-2025-108,8129-3321-9011,REGULAR,DUPLICATE,Collision with Row 77: In-batch duplicate assignment rejected under Rule R11
+115,NITT-2025-115,3488-2910-4491,NRI,WARNING,Rule R4: INCONSISTENT_CATEGORY (NRI requires Passport / OCI Ref)
+142,NITT-2025-142,5510-9921-3841,SUPERNUMERARY,WARNING,Rule R8: PMSSS quota verification pending state nodality endorsement

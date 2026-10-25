@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict
-from backend.app.models.enums import BatchStatus, FindingSeverity, FindingStatus, MatchStatus
+from backend.app.models.enums import BatchStatus, EnrolmentStatus, FindingSeverity, FindingStatus, MatchStatus, SeatType
 
 class ValidationSummary(BaseModel):
     total_records: int
@@ -35,6 +35,32 @@ class BatchValidationResponse(BaseModel):
     findings_count: int
     message: str
 
+class CandidateProgrammeDetail(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+
+class CandidateStudentRecordDetail(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    student_name: Optional[str] = None
+    institution_student_id: Optional[str] = None
+    apaar_id: Optional[str] = None
+    academic_year: Optional[str] = None
+    seat_type: Optional[SeatType] = None
+    enrolment_status: Optional[EnrolmentStatus] = None
+    programme_id: Optional[str] = None
+    programme: Optional[CandidateProgrammeDetail] = None
+
+class CandidateInstitutionDetail(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    code: str
+    state: str
+
 class MatchCandidateRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -49,3 +75,8 @@ class MatchCandidateRead(BaseModel):
     resolution_reason: Optional[str] = None
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[Any] = None
+    created_at: Optional[Any] = None
+    record_a: Optional[CandidateStudentRecordDetail] = None
+    record_b: Optional[CandidateStudentRecordDetail] = None
+    institution_a: Optional[CandidateInstitutionDetail] = None
+    institution_b: Optional[CandidateInstitutionDetail] = None

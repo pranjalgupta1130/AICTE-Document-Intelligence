@@ -1,0 +1,5 @@
+id,code,name,sanctioned,supernumerary,actualRegular,actualSuper,totalEnrolled,utilization,hasViolation,excessCount,statusText
+dept-cse,BTECH-CSE-01,Computer Science & Engineering,180,18,180,16,196,98.9%,False,,Within Quota
+dept-ece,BTECH-ECE-02,Electronics & Communication Engineering,120,12,122,11,133,100.7%,True,2,Exceeded (+2)
+dept-mec,BTECH-MEC-03,Mechanical Engineering,120,12,112,8,120,90.9%,False,,Within Quota
+dept-eee,BTECH-EEE-04,Electrical & Electronics Engineering,90,9,90,9,99,100.0%,False,,At Capacity

@@ -4,6 +4,7 @@ import { AicteCentralReviewPage } from './pages/AicteCentralReviewPage';
 import { StudentRecordCertificatePage } from './pages/StudentRecordCertificatePage';
 import { InstitutionDashboardPage } from './pages/InstitutionDashboardPage';
 import { BulkImportValidationPage } from './pages/BulkImportValidationPage';
+import { ImportHistoryPage } from './pages/ImportHistoryPage';
 import { DataQualityFindingsPage } from './pages/DataQualityFindingsPage';
 import { AuditLogsReportsPage } from './pages/AuditLogsReportsPage';
 import { AuthSession } from './types/auth';
@@ -13,6 +14,7 @@ export const App: React.FC = () => {
 
   const [currentTab, setCurrentTab] = useState<string>('aicte-review');
   const [selectedApaarId, setSelectedApaarId] = useState<string>('9082-4412-8821');
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
 
   const handleLoginSuccess = (newSession: AuthSession) => {
     setSession(newSession);
@@ -38,9 +40,11 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleSwitchTab = (tab: string, apaarId?: string) => {
-    if (apaarId) {
-      setSelectedApaarId(apaarId);
+  const handleSwitchTab = (tab: string, param?: string) => {
+    if (tab === 'records' && param) {
+      setSelectedApaarId(param);
+    } else if (tab === 'history' && param) {
+      setSelectedBatchId(param);
     }
     setCurrentTab(tab);
   };
@@ -60,6 +64,17 @@ export const App: React.FC = () => {
       return (
         <BulkImportValidationPage
           session={session}
+          onLogout={handleLogout}
+          onNavigateTab={handleSwitchTab}
+        />
+      );
+    }
+
+    if (currentTab === 'history') {
+      return (
+        <ImportHistoryPage
+          session={session}
+          initialSelectedBatchId={selectedBatchId}
           onLogout={handleLogout}
           onNavigateTab={handleSwitchTab}
         />

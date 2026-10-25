@@ -1,0 +1,5 @@
+institution_student_id,student_name,apaar_id,programme_id,academic_year
+APEX-AP-001,Student Valid,987654321012,PROG-001-CSE,2026-2027
+APEX-AP-002,Student Missing,,PROG-001-CSE,2026-2027
+APEX-AP-003,Student Short,1234567890,PROG-001-CSE,2026-2027
+APEX-AP-004,Student BadChecksum,987654321019,PROG-001-CSE,2026-2027

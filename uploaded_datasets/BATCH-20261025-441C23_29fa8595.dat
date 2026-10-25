@@ -1,0 +1,3 @@
+institution_student_id,student_name,apaar_id,programme_id,academic_year,seat_type
+APEX-ECE-001,Student One,987654321012,PROG-001-ECE,2026-2027,REGULAR
+APEX-ECE-002,Student Two,111122223333,PROG-001-ECE,2026-2027,SUPERNUMERARY_EWS

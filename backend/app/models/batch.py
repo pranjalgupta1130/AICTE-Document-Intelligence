@@ -23,6 +23,8 @@ class ImportBatch(Base):
     valid_rows = Column(Integer, default=0, nullable=False)
     error_rows = Column(Integer, default=0, nullable=False)
     warning_rows = Column(Integer, default=0, nullable=False)
+    storage_path = Column(String(512), nullable=True)
+    file_size_bytes = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 

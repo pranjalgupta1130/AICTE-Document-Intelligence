@@ -1,0 +1,4 @@
+institution_student_id,student_name,programme_id,academic_year
+APEX-MIX-001,Valid Student,PROG-001-CSE,2026-2027
+,Missing Roll Student,PROG-001-CSE,2026-2027
+APEX-MIX-003,Bad Prog Student,PROG-INVALID-XYZ,2026-2027

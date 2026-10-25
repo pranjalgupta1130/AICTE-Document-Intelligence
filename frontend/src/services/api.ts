@@ -133,13 +133,32 @@ async function apiFetch<T>(
     let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
     try {
       const errJson = await response.json();
-      if (errJson.message) {
+      if (errJson.error && typeof errJson.error === 'object') {
+        const errObj = errJson.error;
+        if (errObj.message) {
+          errorMessage = errObj.message;
+          if (errObj.details) {
+            const detailStr = Array.isArray(errObj.details)
+              ? errObj.details.map((d: any) => (typeof d === 'string' ? d : JSON.stringify(d))).join('; ')
+              : typeof errObj.details === 'string'
+              ? errObj.details
+              : JSON.stringify(errObj.details);
+            errorMessage = `${errorMessage} (${detailStr})`;
+          }
+        }
+      } else if (errJson.message) {
         errorMessage = errJson.message;
       } else if (errJson.detail) {
-        errorMessage = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+        if (Array.isArray(errJson.detail)) {
+          errorMessage = errJson.detail.map((d: any) => d.msg || JSON.stringify(d)).join('; ');
+        } else if (typeof errJson.detail === 'string') {
+          errorMessage = errJson.detail;
+        } else {
+          errorMessage = JSON.stringify(errJson.detail);
+        }
       }
     } catch {
-      // ignore JSON parse error
+      // ignore JSON parse error for non-JSON error payloads
     }
 
     if (response.status === 401) {
@@ -171,7 +190,9 @@ export const authService = {
       let msg = 'Authentication failed. Please verify credentials.';
       try {
         const errJson = await response.json();
-        if (errJson.message) {
+        if (errJson.error?.message) {
+          msg = errJson.error.message;
+        } else if (errJson.message) {
           msg = errJson.message;
         } else if (errJson.detail) {
           msg = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
@@ -230,6 +251,71 @@ export const authService = {
   },
 };
 
+export interface InstitutionItem {
+  id: string;
+  name: string;
+  code: string;
+  state: string;
+  status: string;
+}
+
+export const institutionService = {
+  /**
+   * List accessible institutions
+   */
+  async listInstitutions(): Promise<{ items: InstitutionItem[]; total: number }> {
+    return apiFetch<{ items: InstitutionItem[]; total: number }>('/api/v1/institutions');
+  },
+};
+
+export interface BatchItem {
+  id: string;
+  institution_id: string;
+  institution_name?: string | null;
+  uploader_user_id?: string | null;
+  uploader_email?: string | null;
+  source_filename: string;
+  academic_year: string;
+  version: number;
+  status: string;
+  total_rows: number;
+  valid_rows: number;
+  error_rows: number;
+  warning_rows: number;
+  has_original_file: boolean;
+  file_size_bytes?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StudentRecordItem {
+  id: string;
+  batch_id: string;
+  institution_id: string;
+  programme_id: string;
+  apaar_id?: string | null;
+  institution_student_id: string;
+  student_name?: string | null;
+  academic_year: string;
+  enrolment_status: string;
+  seat_type: string;
+  is_nri: boolean;
+  is_oci: boolean;
+  is_fn: boolean;
+  source_row_number?: number | null;
+  created_at: string;
+}
+
+export interface BatchHistoryEvent {
+  id: string;
+  action: string;
+  actor_email: string;
+  actor_role: string;
+  outcome: string;
+  details?: string | null;
+  timestamp: string;
+}
+
 export const batchService = {
   /**
    * Upload CSV or XLSX student records to POST /api/v1/imports
@@ -237,13 +323,17 @@ export const batchService = {
   async uploadImportFile(
     file: File,
     academicYear: string = '2026-2027',
-    programmeId?: string
+    programmeId?: string,
+    institutionId?: string
   ): Promise<BackendImportCommitResponse> {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('academic_year', academicYear);
     if (programmeId) {
       formData.append('programme_id', programmeId);
+    }
+    if (institutionId) {
+      formData.append('institution_id', institutionId);
     }
 
     return apiFetch<BackendImportCommitResponse>('/api/v1/imports', {
@@ -267,18 +357,173 @@ export const batchService = {
   async getBatchFindings(
     batchId: string,
     limit: number = 100,
-    offset: number = 0
+    offset: number = 0,
+    severity?: string
   ): Promise<PaginatedFindings> {
+    const sevParam = severity ? `&severity=${severity}` : '';
     return apiFetch<PaginatedFindings>(
-      `/api/v1/batches/${batchId}/findings?limit=${limit}&offset=${offset}`
+      `/api/v1/batches/${batchId}/findings?limit=${limit}&offset=${offset}${sevParam}`
     );
   },
 
   /**
-   * List import batches for the current institution
+   * List import batches with optional filtering, search, and pagination
    */
-  async listBatches(limit: number = 50, offset: number = 0): Promise<{ items: any[]; total: number }> {
-    return apiFetch<{ items: any[]; total: number }>(`/api/v1/batches?limit=${limit}&offset=${offset}`);
+  async listBatches(params?: {
+    institution_id?: string;
+    academic_year?: string;
+    status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: BatchItem[]; total: number }> {
+    const q = new URLSearchParams();
+    if (params?.institution_id) q.set('institution_id', params.institution_id);
+    if (params?.academic_year) q.set('academic_year', params.academic_year);
+    if (params?.status) q.set('status', params.status);
+    if (params?.search) q.set('search', params.search);
+    if (params?.limit !== undefined) q.set('limit', String(params.limit));
+    if (params?.offset !== undefined) q.set('offset', String(params.offset));
+
+    const queryStr = q.toString();
+    return apiFetch<{ items: BatchItem[]; total: number }>(`/api/v1/batches${queryStr ? `?${queryStr}` : ''}`);
+  },
+
+  /**
+   * Retrieve single batch details on GET /api/v1/batches/{id}
+   */
+  async getBatch(batchId: string): Promise<BatchItem> {
+    return apiFetch<BatchItem>(`/api/v1/batches/${batchId}`);
+  },
+
+  /**
+   * Retrieve student records for a batch on GET /api/v1/batches/{id}/records
+   */
+  async getBatchRecords(
+    batchId: string,
+    params?: {
+      search?: string;
+      programme_id?: string;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<{ items: StudentRecordItem[]; total: number }> {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.programme_id) q.set('programme_id', params.programme_id);
+    if (params?.limit !== undefined) q.set('limit', String(params.limit));
+    if (params?.offset !== undefined) q.set('offset', String(params.offset));
+
+    const queryStr = q.toString();
+    return apiFetch<{ items: StudentRecordItem[]; total: number }>(
+      `/api/v1/batches/${batchId}/records${queryStr ? `?${queryStr}` : ''}`
+    );
+  },
+
+  /**
+   * Retrieve batch audit history on GET /api/v1/batches/{id}/history
+   */
+  async getBatchHistory(batchId: string): Promise<BatchHistoryEvent[]> {
+    return apiFetch<BatchHistoryEvent[]>(`/api/v1/batches/${batchId}/history`);
+  },
+
+  /**
+   * Download original file via browser trigger
+   */
+  async downloadOriginalFile(batchId: string, filename: string): Promise<void> {
+    const session = authService.getCurrentSession();
+    const headers = new Headers();
+    if (session?.token) {
+      headers.set('Authorization', `Bearer ${session.token}`);
+    }
+
+    const response = await fetch(`/api/v1/batches/${batchId}/download`, { headers });
+    if (!response.ok) {
+      let errMsg = 'Failed to download original document.';
+      try {
+        const errJson = await response.json();
+        errMsg = errJson.error?.message || errJson.message || errJson.detail || errMsg;
+      } catch {
+        // fallback
+      }
+      throw new Error(errMsg);
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Export batch student records to CSV
+   */
+  async exportRecordsCsv(batchId: string, filename?: string): Promise<void> {
+    const session = authService.getCurrentSession();
+    const headers = new Headers();
+    if (session?.token) {
+      headers.set('Authorization', `Bearer ${session.token}`);
+    }
+
+    const response = await fetch(`/api/v1/batches/${batchId}/export/records`, { headers });
+    if (!response.ok) {
+      let errMsg = 'Failed to export records CSV.';
+      try {
+        const errJson = await response.json();
+        errMsg = errJson.error?.message || errJson.message || errJson.detail || errMsg;
+      } catch {
+        // fallback
+      }
+      throw new Error(errMsg);
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || `${batchId}_records.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Export validation findings to CSV
+   */
+  async exportFindingsCsv(batchId: string, filename?: string): Promise<void> {
+    const session = authService.getCurrentSession();
+    const headers = new Headers();
+    if (session?.token) {
+      headers.set('Authorization', `Bearer ${session.token}`);
+    }
+
+    const response = await fetch(`/api/v1/reports/export?batch_id=${batchId}&report_type=findings`, { headers });
+    if (!response.ok) {
+      let errMsg = 'Failed to export findings CSV.';
+      try {
+        const errJson = await response.json();
+        errMsg = errJson.error?.message || errJson.message || errJson.detail || errMsg;
+      } catch {
+        // fallback
+      }
+      throw new Error(errMsg);
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || `findings_${batchId}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   },
 
   /**
@@ -302,5 +547,224 @@ export const batchService = {
     }>(`/api/v1/batches/${batchId}`, {
       method: 'DELETE',
     });
+  },
+
+  /**
+   * Submit decision for a batch on POST /api/v1/batches/{batchId}/review
+   */
+  async reviewBatch(
+    batchId: string,
+    decision: 'UNDER_REVIEW' | 'ACCEPTED' | 'REJECTED' | 'NEEDS_CORRECTION',
+    reason: string
+  ): Promise<BatchReviewResponse> {
+    return reviewService.reviewBatch(batchId, decision, reason);
+  },
+};
+
+export interface CandidateStudentRecordDetail {
+  id: string;
+  student_name?: string | null;
+  institution_student_id?: string | null;
+  apaar_id?: string | null;
+  academic_year?: string | null;
+  seat_type?: string | null;
+  enrolment_status?: string | null;
+  programme_id?: string | null;
+  programme?: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface CandidateInstitutionDetail {
+  id: string;
+  name: string;
+  code: string;
+  state: string;
+}
+
+export interface MatchCandidateItem {
+  id: string;
+  record_a_id: string;
+  record_b_id: string;
+  institution_a_id: string;
+  institution_b_id: string;
+  matching_signal: string;
+  confidence: number;
+  status: 'CANDIDATE' | 'CONFIRMED_DUPLICATE' | 'DISMISSED';
+  resolution_reason?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  created_at?: string | null;
+  record_a?: CandidateStudentRecordDetail | null;
+  record_b?: CandidateStudentRecordDetail | null;
+  institution_a?: CandidateInstitutionDetail | null;
+  institution_b?: CandidateInstitutionDetail | null;
+}
+
+export interface BatchReviewResponse {
+  batch_id: string;
+  institution_id: string;
+  previous_status: string;
+  status: string;
+  reviewed_by: string;
+  reviewed_at: string;
+  reason: string;
+  message: string;
+}
+
+export const reviewService = {
+  /**
+   * List cross-institution duplicate match candidates on GET /api/v1/reviews/matches
+   */
+  async listMatchCandidates(params?: {
+    status?: string;
+    institution_id?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: MatchCandidateItem[]; total: number }> {
+    const q = new URLSearchParams();
+    if (params?.status) q.set('status', params.status);
+    if (params?.institution_id) q.set('institution_id', params.institution_id);
+    if (params?.limit !== undefined) q.set('limit', String(params.limit));
+    if (params?.offset !== undefined) q.set('offset', String(params.offset));
+
+    const queryStr = q.toString();
+    return apiFetch<{ items: MatchCandidateItem[]; total: number }>(
+      `/api/v1/reviews/matches${queryStr ? `?${queryStr}` : ''}`
+    );
+  },
+
+  /**
+   * Submit decision for a match candidate on POST /api/v1/reviews/matches/{matchId}
+   */
+  async reviewMatchCandidate(
+    matchId: string,
+    status: 'CONFIRMED_DUPLICATE' | 'DISMISSED',
+    resolutionReason: string
+  ): Promise<MatchCandidateItem> {
+    return apiFetch<MatchCandidateItem>(`/api/v1/reviews/matches/${matchId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        status,
+        resolution_reason: resolutionReason,
+      }),
+    });
+  },
+
+  /**
+   * Submit decision for a batch on POST /api/v1/reviews/batches/{batchId}
+   */
+  async reviewBatch(
+    batchId: string,
+    decision: 'UNDER_REVIEW' | 'ACCEPTED' | 'REJECTED' | 'NEEDS_CORRECTION',
+    reason: string
+  ): Promise<BatchReviewResponse> {
+    return apiFetch<BatchReviewResponse>(`/api/v1/reviews/batches/${batchId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        decision,
+        reason,
+      }),
+    });
+  },
+
+  /**
+   * Submit batch review decision via alias on POST /api/v1/batches/{batchId}/review
+   */
+  async reviewBatchDirect(
+    batchId: string,
+    decision: 'UNDER_REVIEW' | 'ACCEPTED' | 'REJECTED' | 'NEEDS_CORRECTION',
+    reason: string
+  ): Promise<BatchReviewResponse> {
+    return apiFetch<BatchReviewResponse>(`/api/v1/batches/${batchId}/review`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        decision,
+        reason,
+      }),
+    });
+  },
+};
+
+export interface AicteDashboardMetrics {
+  academic_year: string;
+  total_institutions: number;
+  total_submissions: number;
+  total_batches: number;
+  total_enrolled_students: number;
+  total_approved_intake: number;
+  aggregate_intake_utilization_pct: number;
+  total_open_exceptions: number;
+  total_candidate_duplicates: number;
+  confirmed_duplicates_count: number;
+  dismissed_duplicates_count: number;
+  institution_breakdown: Array<{
+    institution_id: string;
+    institution_name: string;
+    state: string;
+    total_batches: number;
+    latest_status?: string | null;
+    total_enrolled: number;
+    total_approved: number;
+    intake_utilization_pct: number;
+    open_exceptions_count: number;
+  }>;
+  recent_activity: Array<{
+    timestamp: string;
+    action: string;
+    actor_email: string;
+    actor_role: string;
+    details?: string | null;
+    outcome: string;
+  }>;
+}
+
+export interface ApprovedIntakeItem {
+  id: string;
+  institution_id: string;
+  programme_id: string;
+  programme_name?: string | null;
+  academic_year: string;
+  regular_intake: number;
+  supernumerary_intake: number;
+  total_approved_intake: number;
+  supernumerary_policy?: string | null;
+}
+
+export const dashboardService = {
+  /**
+   * Get AICTE national analytics on GET /api/v1/dashboard/aicte
+   */
+  async getAicteMetrics(): Promise<AicteDashboardMetrics> {
+    return apiFetch<AicteDashboardMetrics>('/api/v1/dashboard/aicte');
+  },
+
+  /**
+   * Get approved intake records on GET /api/v1/intake
+   */
+  async getApprovedIntake(params?: {
+    institution_id?: string;
+    academic_year?: string;
+    programme_id?: string;
+  }): Promise<{ items: ApprovedIntakeItem[]; total: number }> {
+    const q = new URLSearchParams();
+    if (params?.institution_id) q.set('institution_id', params.institution_id);
+    if (params?.academic_year) q.set('academic_year', params.academic_year);
+    if (params?.programme_id) q.set('programme_id', params.programme_id);
+
+    const queryStr = q.toString();
+    return apiFetch<{ items: ApprovedIntakeItem[]; total: number }>(
+      `/api/v1/intake${queryStr ? `?${queryStr}` : ''}`
+    );
   },
 };
