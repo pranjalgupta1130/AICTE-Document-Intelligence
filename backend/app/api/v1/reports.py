@@ -21,6 +21,30 @@ from backend.app.models.user import User
 from backend.app.models.validation import ValidationFinding
 from backend.app.services.quality_service import calculate_batch_quality_score
 
+# Dangerous formula-injection prefix characters (OWASP CSV Injection standard)
+_INJECTION_PREFIXES: tuple = ("=", "+", "-", "@", "|", "%")
+
+def sanitize_csv_cell(val: object) -> str:
+    """
+    Sanitize a cell value to prevent CSV / Spreadsheet formula injection.
+    If the stripped value begins with an injection prefix (=, +, -, @, |, %),
+    it is prepended with a single quote (') so that spreadsheet applications
+    (Excel, Calc, Google Sheets) treat the content strictly as text.
+    Handles leading whitespace and control characters safely without double-escaping.
+    """
+    if val is None:
+        return ""
+    s = str(val)
+    if not s:
+        return ""
+    # Check if stripping leading whitespace/control characters reveals a dangerous prefix
+    stripped = s.lstrip(" \t\r\n\x00\x0b\x0c")
+    if stripped and stripped[0] in _INJECTION_PREFIXES:
+        # If not already single-quote escaped
+        if not s.startswith("'"):
+            return f"'{s}"
+    return s
+
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
 @router.get("/export", summary="Export CSV validation findings and data quality report")
@@ -67,9 +91,18 @@ def export_report_csv(
                 row_writer = csv.writer(row_buf)
                 score = calculate_batch_quality_score(db, b)
                 row_writer.writerow([
-                    b.id, b.institution_id, b.academic_year, b.version, b.status.value,
-                    score.total_records, score.overall_score, score.grade,
-                    score.completeness.score, score.validity.score, score.consistency.score, score.uniqueness.score
+                    sanitize_csv_cell(b.id),
+                    sanitize_csv_cell(b.institution_id),
+                    sanitize_csv_cell(b.academic_year),
+                    sanitize_csv_cell(b.version),
+                    sanitize_csv_cell(b.status.value),
+                    sanitize_csv_cell(score.total_records),
+                    sanitize_csv_cell(score.overall_score),
+                    sanitize_csv_cell(score.grade),
+                    sanitize_csv_cell(score.completeness.score),
+                    sanitize_csv_cell(score.validity.score),
+                    sanitize_csv_cell(score.consistency.score),
+                    sanitize_csv_cell(score.uniqueness.score)
                 ])
                 yield row_buf.getvalue()
 
@@ -94,9 +127,17 @@ def export_report_csv(
                 row_buf = io.StringIO()
                 row_writer = csv.writer(row_buf)
                 row_writer.writerow([
-                    f.id, f.batch_id, f.row_number or "", f.field_name or "", f.rule_code,
-                    f.severity.value, f.status.value, f.message,
-                    f.expected_value or "", f.actual_value or "", f.suggested_action or ""
+                    sanitize_csv_cell(f.id),
+                    sanitize_csv_cell(f.batch_id),
+                    sanitize_csv_cell(f.row_number or ""),
+                    sanitize_csv_cell(f.field_name or ""),
+                    sanitize_csv_cell(f.rule_code),
+                    sanitize_csv_cell(f.severity.value),
+                    sanitize_csv_cell(f.status.value),
+                    sanitize_csv_cell(f.message),
+                    sanitize_csv_cell(f.expected_value or ""),
+                    sanitize_csv_cell(f.actual_value or ""),
+                    sanitize_csv_cell(f.suggested_action or "")
                 ])
                 yield row_buf.getvalue()
 

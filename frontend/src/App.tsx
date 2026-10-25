@@ -16,6 +16,11 @@ export const App: React.FC = () => {
 
   const handleLoginSuccess = (newSession: AuthSession) => {
     setSession(newSession);
+    if (newSession.role === 'operator' || newSession.role === 'admin') {
+      setCurrentTab('import');
+    } else {
+      setCurrentTab('aicte-review');
+    }
     try {
       localStorage.setItem('apaar_auth_session', JSON.stringify(newSession));
     } catch {

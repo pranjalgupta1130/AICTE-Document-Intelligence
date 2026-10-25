@@ -19,6 +19,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   // Submission / Loading states
   const [authStatus, setAuthStatus] = useState<'idle' | 'verifying' | 'authorized'>('idle');
   const [authorizedSession, setAuthorizedSession] = useState<AuthSession | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Flash highlight effect on inputs when role changes
   const [isFlashing, setIsFlashing] = useState(false);
@@ -31,6 +32,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
   const handleRoleSelect = (key: RoleKey) => {
     setActiveRoleKey(key);
+    setAuthError(null);
     const role = ROLE_DATASETS[key];
     setUsername(role.email);
     setInstCode(role.pid);
@@ -47,6 +49,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     if (authStatus !== 'idle') return;
 
     setAuthStatus('verifying');
+    setAuthError(null);
 
     try {
       const session = await authService.login(
@@ -66,9 +69,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       if (onLoginSuccess) {
         onLoginSuccess(session);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Authentication error:', err);
       setAuthStatus('idle');
+      setAuthError(err?.message || 'Authentication failed. Please verify credentials.');
     }
   };
 
@@ -397,6 +401,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                       </span>
                     </label>
                   </div>
+
+                  {/* Error Notification Banner */}
+                  {authError && (
+                    <div className="p-space-sm rounded bg-status-error-surface border border-status-error-border flex items-center gap-space-sm text-status-error font-body-sm text-body-sm animate-in fade-in">
+                      <span className="material-symbols-outlined text-[20px] shrink-0">error</span>
+                      <span className="font-medium">{authError}</span>
+                    </div>
+                  )}
 
                   {/* Action Buttons */}
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-space-md pt-space-xs">

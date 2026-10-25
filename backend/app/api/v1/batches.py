@@ -2,11 +2,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from backend.app.core.errors import NotFoundError
+from backend.app.core.errors import AppException, NotFoundError, PermissionDeniedError
 from backend.app.core.permissions import get_current_user, enforce_institution_scope
 from backend.app.db.session import get_db
+from backend.app.models.audit import AuditEvent
 from backend.app.models.batch import ImportBatch
-from backend.app.models.enums import BatchStatus, FindingSeverity
+from backend.app.models.enums import AuditAction, BatchStatus, FindingSeverity, UserRole
 from backend.app.models.match import MatchCandidate
 from backend.app.models.student import StudentRecord
 from backend.app.models.user import User
@@ -17,6 +18,79 @@ from backend.app.schemas.validation import BatchValidationResponse, MatchCandida
 from backend.app.schemas.workflows import BatchSubmitRequest, BatchSubmitResponse
 
 router = APIRouter(prefix="/batches", tags=["Batches"])
+
+@router.delete("/{batch_id}", summary="Safely delete an unsubmitted import batch and associated records")
+def delete_batch(
+    batch_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Safely delete an unsubmitted import batch.
+    - Only INSTITUTION_ADMIN, AICTE_ADMIN, or DEMO_ADMIN are permitted.
+    - Strict institutional tenant scoping enforced.
+    - Rejects deletion if batch is already SUBMITTED, UNDER_REVIEW, or ACCEPTED.
+    - Safely removes associated student records, validation findings, and staged match candidates.
+    - Records an immutable audit log entry.
+    """
+    if current_user.role not in (UserRole.INSTITUTION_ADMIN, UserRole.AICTE_ADMIN, UserRole.DEMO_ADMIN):
+        raise PermissionDeniedError(f"Role '{current_user.role.value}' is not authorized to delete batches.")
+
+    batch = db.query(ImportBatch).filter(ImportBatch.id == batch_id).first()
+    if not batch:
+        raise NotFoundError(f"ImportBatch '{batch_id}' was not found.")
+
+    # Strict tenant isolation
+    enforce_institution_scope(current_user, batch.institution_id)
+
+    # Pre-submission lifecycle guard: never allow deletion of officially submitted or accepted batches
+    if batch.status in (BatchStatus.SUBMITTED, BatchStatus.UNDER_REVIEW, BatchStatus.ACCEPTED):
+        raise AppException(
+            code="PROTECTED_BATCH_STATUS",
+            message=f"Cannot delete batch '{batch_id}' in protected status '{batch.status.value}'. Submitted or accepted batches are locked for compliance.",
+            status_code=400
+        )
+
+    # 1. Clean up any match candidates referencing students in this batch
+    batch_record_ids = [s.id for s in db.query(StudentRecord.id).filter(StudentRecord.batch_id == batch_id).all()]
+    deleted_matches_count = 0
+    if batch_record_ids:
+        deleted_matches_count = db.query(MatchCandidate).filter(
+            (MatchCandidate.record_a_id.in_(batch_record_ids)) |
+            (MatchCandidate.record_b_id.in_(batch_record_ids))
+        ).delete(synchronize_session=False)
+
+    total_records = len(batch_record_ids)
+    findings_count = db.query(ValidationFinding).filter(ValidationFinding.batch_id == batch_id).count()
+    source_filename = batch.source_filename
+    inst_id = batch.institution_id
+
+    # 2. Record immutable audit log
+    audit = AuditEvent(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        actor_role=current_user.role.value,
+        institution_id=inst_id,
+        action=AuditAction.IMPORT_UPLOAD,
+        object_type="IMPORT_BATCH",
+        object_id=batch_id,
+        outcome="SUCCESS",
+        details=f"Deleted batch '{batch_id}' ({source_filename}) with {total_records} student records, {findings_count} findings, {deleted_matches_count} match candidates."
+    )
+    db.add(audit)
+
+    # 3. Delete batch (triggers SQLAlchemy cascade delete-orphan on student_records and findings)
+    db.delete(batch)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Batch '{batch_id}' and all associated records were successfully deleted.",
+        "batch_id": batch_id,
+        "deleted_records": total_records,
+        "deleted_findings": findings_count,
+        "deleted_matches": deleted_matches_count
+    }
 
 @router.get("", response_model=PaginatedList[BatchRead], summary="List import batches scoped by role and institution")
 def list_batches(
