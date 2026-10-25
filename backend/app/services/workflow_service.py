@@ -73,7 +73,7 @@ def submit_batch(
         ValidationFinding.severity == FindingSeverity.BLOCKING_ERROR
     ).count()
 
-    if open_blocking_findings > 0 or batch.error_rows > 0:
+    if open_blocking_findings > 0 or (batch.error_rows or 0) > 0:
         raise AppException(
             code="SUBMISSION_BLOCKED_ERRORS",
             message=f"Batch '{batch_id}' cannot be submitted: {open_blocking_findings} unresolved blocking errors exist.",
@@ -284,7 +284,7 @@ def review_batch(
             ValidationFinding.severity == FindingSeverity.BLOCKING_ERROR
         ).count()
 
-        if open_blocking_findings > 0 or batch.error_rows > 0:
+        if open_blocking_findings > 0 or (batch.error_rows or 0) > 0:
             raise AppException(
                 code="APPROVAL_BLOCKED_ERRORS",
                 message=f"Batch '{batch_id}' cannot be approved: {open_blocking_findings} unresolved blocking errors exist.",
@@ -384,8 +384,8 @@ def get_institution_dashboard(
         StudentRecord.academic_year == ay
     ).all()
     total_students = len(students)
-    valid_count = sum(b.valid_rows for b in batches)
-    error_count = sum(b.error_rows for b in batches)
+    valid_count = sum((b.valid_rows or 0) for b in batches)
+    error_count = sum((b.error_rows or 0) for b in batches)
     missing_apaar = sum(1 for s in students if not s.apaar_id)
 
     # Active enrolment status breakdown: ENROLLED vs ADMITTED
@@ -510,7 +510,7 @@ def get_institution_dashboard(
     recent_activity = [
         RecentActivityItem(
             timestamp=a.timestamp,
-            action=a.action.value,
+            action=getattr(a.action, "value", str(a.action)),
             actor_email=a.actor_email,
             actor_role=a.actor_role,
             details=a.details,
@@ -615,7 +615,7 @@ def get_aicte_dashboard(
     recent_activity = [
         RecentActivityItem(
             timestamp=a.timestamp,
-            action=a.action.value,
+            action=getattr(a.action, "value", str(a.action)),
             actor_email=a.actor_email,
             actor_role=a.actor_role,
             details=a.details,

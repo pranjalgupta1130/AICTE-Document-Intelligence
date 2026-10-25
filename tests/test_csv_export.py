@@ -232,6 +232,12 @@ class TestReportsExportIntegration:
             resp = client.get("/api/v1/reports/export", headers={"Authorization": f"Bearer {ver_token}"})
             assert resp.status_code == 403
 
+            resp_batch = client.get("/api/v1/batches/BATCH-001/records.csv", headers={"Authorization": f"Bearer {ver_token}"})
+            assert resp_batch.status_code in (403, 404)
+
+            resp_dl = client.get("/api/v1/batches/BATCH-001/download", headers={"Authorization": f"Bearer {ver_token}"})
+            assert resp_dl.status_code in (403, 404)
+
     def test_cross_institution_tenant_isolation(self, client: TestClient):
         apex_token = get_token(client, "apex_admin@apex.edu.in")
         # Apex attempting to export Bharat College (INST-002) records

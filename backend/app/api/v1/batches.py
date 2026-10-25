@@ -210,6 +210,9 @@ def download_original_file(
 
     enforce_institution_scope(current_user, batch.institution_id)
 
+    if current_user.role == UserRole.EXTERNAL_VERIFIER:
+        raise PermissionDeniedError("External verifiers cannot download raw datasets.")
+
     if not batch.storage_path:
         raise NotFoundError("Original file unavailable — this document was not retained by the system.")
 
@@ -232,7 +235,7 @@ def download_original_file(
     audit = AuditEvent(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
-        actor_role=current_user.role.value,
+        actor_role=getattr(current_user.role, "value", str(current_user.role)),
         institution_id=batch.institution_id,
         action=AuditAction.REPORT_EXPORT,
         object_type="ORIGINAL_DATASET",
@@ -367,6 +370,9 @@ def export_batch_records_csv(
 
     enforce_institution_scope(current_user, batch.institution_id)
 
+    if current_user.role == UserRole.EXTERNAL_VERIFIER:
+        raise PermissionDeniedError("External verifiers cannot export batch student records.")
+
     records = db.query(StudentRecord).filter(StudentRecord.batch_id == batch_id).order_by(StudentRecord.source_row_number.asc()).all()
 
     def generate_records():
@@ -404,7 +410,7 @@ def export_batch_records_csv(
     audit = AuditEvent(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
-        actor_role=current_user.role.value,
+        actor_role=getattr(current_user.role, "value", str(current_user.role)),
         institution_id=batch.institution_id,
         action=AuditAction.REPORT_EXPORT,
         object_type="BATCH_RECORDS",

@@ -88,6 +88,77 @@ def external_verifier_token(client):
         db.close()
 
 
+@pytest.fixture(autouse=True)
+def ensure_sample_students_exist():
+    """Ensure INST-001 and INST-002 have sample student records in test DB."""
+    db = SessionLocal()
+    try:
+        from backend.app.models.batch import ImportBatch
+        from backend.app.models.enums import BatchStatus, EnrolmentStatus, SeatType
+
+        inst1_student = db.query(StudentRecord).filter(StudentRecord.institution_id == "INST-001").first()
+        if not inst1_student:
+            b1 = db.query(ImportBatch).filter(ImportBatch.id == "BATCH-VERIF-001").first()
+            if not b1:
+                b1 = ImportBatch(
+                    id="BATCH-VERIF-001",
+                    institution_id="INST-001",
+                    academic_year="2026-2027",
+                    source_filename="verif_inst1.csv",
+                    version=1,
+                    status=BatchStatus.VALIDATED
+                )
+                db.add(b1)
+                db.flush()
+            s1 = StudentRecord(
+                id="stu-verif-001",
+                batch_id=b1.id,
+                institution_id="INST-001",
+                programme_id="PROG-001-CSE",
+                apaar_id="9082-1234-8821",
+                institution_student_id="STU-2026-0001",
+                student_name="Aarav Sharma",
+                academic_year="2026-2027",
+                enrolment_status=EnrolmentStatus.ENROLLED,
+                seat_type=SeatType.REGULAR
+            )
+            db.add(s1)
+
+        inst2_student = db.query(StudentRecord).filter(StudentRecord.institution_id == "INST-002").first()
+        if not inst2_student:
+            b2 = db.query(ImportBatch).filter(ImportBatch.id == "BATCH-VERIF-002").first()
+            if not b2:
+                b2 = ImportBatch(
+                    id="BATCH-VERIF-002",
+                    institution_id="INST-002",
+                    academic_year="2026-2027",
+                    source_filename="verif_inst2.csv",
+                    version=1,
+                    status=BatchStatus.VALIDATED
+                )
+                db.add(b2)
+                db.flush()
+            s2 = StudentRecord(
+                id="stu-verif-002",
+                batch_id=b2.id,
+                institution_id="INST-002",
+                programme_id="PROG-002-CSE",
+                apaar_id="9082-1234-8822",
+                institution_student_id="STU-2026-0002",
+                student_name="Bhavya Patel",
+                academic_year="2026-2027",
+                enrolment_status=EnrolmentStatus.ENROLLED,
+                seat_type=SeatType.REGULAR
+            )
+            db.add(s2)
+
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 # -----------------------------------------------------------------------------
 # 1. Search Endpoint Tests
 # -----------------------------------------------------------------------------

@@ -1,8 +1,10 @@
 import sys
+import os
 from sqlalchemy.orm import Session
 
 from backend.app.core.security import hash_password
-from backend.app.db.session import engine, init_db, SessionLocal, Base
+from backend.app.db import session as db_session
+from backend.app.db.session import init_db, Base
 from backend.app.models.enums import UserRole
 from backend.app.models.institution import Institution, Programme, ApprovedIntake
 from backend.app.models.user import User
@@ -194,14 +196,30 @@ def seed_database(reset: bool = False, db: Session = None) -> None:
     close_db_at_end = False
     if db is None:
         init_db()
-        db = SessionLocal()
+        db = db_session.SessionLocal()
         close_db_at_end = True
 
     try:
-        if reset:
+        active_engine = getattr(db_session, "engine", None)
+        if reset and active_engine is not None:
+            db_path = getattr(active_engine.url, "database", None)
+            is_dev_db = False
+            if db_path:
+                try:
+                    dev_db_canonical = os.path.abspath("apaar_platform.db").lower()
+                    target_db_canonical = os.path.abspath(db_path).lower()
+                    is_dev_db = (target_db_canonical == dev_db_canonical)
+                except Exception:
+                    is_dev_db = "apaar_platform.db" in str(active_engine.url) and "test" not in str(active_engine.url).lower()
+
+            if is_dev_db and os.getenv("ALLOW_DEV_DB_RESET", "false").lower() != "true":
+                raise RuntimeError(
+                    f"Destructive reset blocked: Refusing to drop tables on development database ({active_engine.url}). "
+                    "Use an isolated test database for testing, or set ALLOW_DEV_DB_RESET=true if explicitly intended."
+                )
             # Recreate all tables cleanly
-            Base.metadata.drop_all(bind=engine)
-            Base.metadata.create_all(bind=engine)
+            Base.metadata.drop_all(bind=active_engine)
+            Base.metadata.create_all(bind=active_engine)
 
         # 1. Seed Institutions, Programmes, and Intakes
         for inst_data in INSTITUTIONS_SEED:
