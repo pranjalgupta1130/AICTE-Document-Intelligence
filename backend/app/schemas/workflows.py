@@ -77,6 +77,8 @@ class ProgrammeIntakeMetric(BaseModel):
     total_enrolled: int
     utilization_pct: float
     status: str  # WITHIN_LIMIT or EXCEEDED
+    enrolled_count: int = 0
+    admitted_count: int = 0
 
 class RecentBatchSummary(BaseModel):
     id: str
@@ -98,6 +100,12 @@ class RecentActivityItem(BaseModel):
     details: Optional[str] = None
     outcome: str
 
+class SpecialQuotaMetric(BaseModel):
+    category: str
+    label: str
+    enrolled: int
+    cap: Optional[int] = None
+
 class InstitutionDashboardMetrics(BaseModel):
     institution_id: str
     institution_name: str
@@ -115,6 +123,12 @@ class InstitutionDashboardMetrics(BaseModel):
     programme_intake_breakdown: List[ProgrammeIntakeMetric]
     recent_batches: List[RecentBatchSummary]
     recent_activity: List[RecentActivityItem]
+    blocking_findings_count: int = 0
+    warning_findings_count: int = 0
+    available_academic_years: List[str] = Field(default_factory=list)
+    special_quota_breakdown: List[SpecialQuotaMetric] = Field(default_factory=list)
+    enrolled_finalized_count: int = 0
+    admitted_count: int = 0
 
 class InstitutionEnrolmentSummary(BaseModel):
     institution_id: str

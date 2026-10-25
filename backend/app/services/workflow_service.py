@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, distinct
 
 from backend.app.core.errors import AppException, NotFoundError, PermissionDeniedError
 from backend.app.core.permissions import enforce_institution_scope
@@ -28,6 +28,7 @@ from backend.app.schemas.workflows import (
     ProgrammeIntakeMetric,
     RecentActivityItem,
     RecentBatchSummary,
+    SpecialQuotaMetric,
 )
 
 # ------------------------------------------------------------------------------
@@ -319,6 +320,8 @@ def review_batch(
         message=f"Batch '{batch.id}' successfully transitioned from '{prev_status.value}' to '{batch.status.value}'."
     )
 
+ACTIVE_ENROLMENT_STATUSES = (EnrolmentStatus.ENROLLED, EnrolmentStatus.ADMITTED)
+
 # ------------------------------------------------------------------------------
 # 3. Dashboard Metrics Services
 # ------------------------------------------------------------------------------
@@ -340,8 +343,30 @@ def get_institution_dashboard(
     if not institution:
         raise NotFoundError(f"Institution '{inst_id}' not found.")
 
-    ay = academic_year or "2024-2025"
+    # Available academic years for this institution
+    batch_years = [
+        r[0] for r in db.query(distinct(ImportBatch.academic_year))
+        .filter(ImportBatch.institution_id == inst_id).all() if r[0]
+    ]
+    intake_years = [
+        r[0] for r in db.query(distinct(ApprovedIntake.academic_year))
+        .filter(ApprovedIntake.institution_id == inst_id).all() if r[0]
+    ]
+    student_years = [
+        r[0] for r in db.query(distinct(StudentRecord.academic_year))
+        .filter(StudentRecord.institution_id == inst_id).all() if r[0]
+    ]
+    available_years = sorted(list(set(batch_years + intake_years + student_years)), reverse=True)
+    if not available_years:
+        available_years = ["2026-2027"]
 
+    if academic_year:
+        ay = academic_year
+        if ay not in available_years:
+            available_years.append(ay)
+            available_years.sort(reverse=True)
+    else:
+        ay = available_years[0]
 
     # Batches metrics
     batches_q = db.query(ImportBatch).filter(
@@ -363,12 +388,45 @@ def get_institution_dashboard(
     error_count = sum(b.error_rows for b in batches)
     missing_apaar = sum(1 for s in students if not s.apaar_id)
 
-    # Duplicate flags from findings
+    # Active enrolment status breakdown: ENROLLED vs ADMITTED
+    enrolled_finalized_count = sum(1 for s in students if s.enrolment_status == EnrolmentStatus.ENROLLED)
+    admitted_count = sum(1 for s in students if s.enrolment_status == EnrolmentStatus.ADMITTED)
+    active_students = [s for s in students if s.enrolment_status in ACTIVE_ENROLMENT_STATUSES]
+
+    # Duplicate flags from findings (scoped strictly to OPEN findings)
     dup_flags = db.query(ValidationFinding).join(ImportBatch).filter(
         ImportBatch.institution_id == inst_id,
         ImportBatch.academic_year == ay,
+        ValidationFinding.status == FindingStatus.OPEN,
         ValidationFinding.rule_code.like("RULE-DUP%")
     ).count()
+
+    # Severity breakdown from findings for this institution and academic year (strictly OPEN findings)
+    finding_rows = db.query(ValidationFinding.severity, func.count(ValidationFinding.id)).join(ImportBatch).filter(
+        ImportBatch.institution_id == inst_id,
+        ImportBatch.academic_year == ay,
+        ValidationFinding.status == FindingStatus.OPEN,
+    ).group_by(ValidationFinding.severity).all()
+    finding_counts = {sev: cnt for sev, cnt in finding_rows}
+    blocking_count = finding_counts.get(FindingSeverity.BLOCKING_ERROR, 0)
+    warning_count = finding_counts.get(FindingSeverity.WARNING, 0)
+
+    # Special Quota Breakdown derived from active student records
+    tfw_enrolled = sum(1 for s in active_students if s.seat_type == SeatType.SUPERNUMERARY_TFW)
+    ews_enrolled = sum(1 for s in active_students if s.seat_type == SeatType.SUPERNUMERARY_EWS)
+    pmsss_enrolled = sum(1 for s in active_students if s.seat_type == SeatType.SUPERNUMERARY_OTHER)
+    nri_enrolled = sum(1 for s in active_students if s.is_nri or s.seat_type == SeatType.NRI)
+    oci_enrolled = sum(1 for s in active_students if s.is_oci)
+    fn_enrolled = sum(1 for s in active_students if s.is_fn or s.seat_type == SeatType.SUPERNUMERARY_FN)
+
+    special_quotas = [
+        SpecialQuotaMetric(category="TFW", label="Tuition Fee Waiver (TFW)", enrolled=tfw_enrolled),
+        SpecialQuotaMetric(category="EWS", label="Economically Weaker Section (EWS)", enrolled=ews_enrolled),
+        SpecialQuotaMetric(category="PMSSS", label="Prime Minister's Special Scholarship (PMSSS)", enrolled=pmsss_enrolled),
+        SpecialQuotaMetric(category="NRI", label="Non-Resident Indian (NRI)", enrolled=nri_enrolled),
+        SpecialQuotaMetric(category="OCI", label="Overseas Citizen of India (OCI/PIO)", enrolled=oci_enrolled),
+        SpecialQuotaMetric(category="FN", label="Foreign Nationals (FN)", enrolled=fn_enrolled),
+    ]
 
     # Programme breakdown and intake calculation
     programmes = db.query(Programme).filter(Programme.institution_id == inst_id).all()
@@ -389,7 +447,13 @@ def get_institution_dashboard(
         super_app = limit.supernumerary_intake if limit else 0
         prog_tot_app = reg_app + super_app
 
-        prog_students = [s for s in students if s.programme_id == prog.id and s.enrolment_status == EnrolmentStatus.ENROLLED]
+        prog_students = [
+            s for s in students
+            if s.programme_id == prog.id and s.enrolment_status in ACTIVE_ENROLMENT_STATUSES
+        ]
+        prog_enrolled_count = sum(1 for s in prog_students if s.enrolment_status == EnrolmentStatus.ENROLLED)
+        prog_admitted_count = sum(1 for s in prog_students if s.enrolment_status == EnrolmentStatus.ADMITTED)
+
         prog_super_enrolled = sum(1 for s in prog_students if s.seat_type in (
             SeatType.SUPERNUMERARY_EWS, SeatType.SUPERNUMERARY_TFW, SeatType.SUPERNUMERARY_FN, SeatType.SUPERNUMERARY_OTHER
         ))
@@ -400,7 +464,12 @@ def get_institution_dashboard(
         tot_enrolled += prog_tot_enrolled
 
         util = round((prog_tot_enrolled / prog_tot_app * 100.0), 1) if prog_tot_app > 0 else 0.0
-        status_str = "EXCEEDED" if prog_tot_enrolled > prog_tot_app else "WITHIN_LIMIT"
+
+        # Independent checks for regular, supernumerary, and total capacity (FIX 7)
+        reg_exceeded = max(0, prog_reg_enrolled - reg_app)
+        super_exceeded = max(0, prog_super_enrolled - super_app)
+        tot_exceeded = max(0, prog_tot_enrolled - prog_tot_app)
+        status_str = "EXCEEDED" if (reg_exceeded > 0 or super_exceeded > 0 or tot_exceeded > 0) else "WITHIN_LIMIT"
 
         prog_metrics.append(ProgrammeIntakeMetric(
             programme_id=prog.id,
@@ -412,7 +481,9 @@ def get_institution_dashboard(
             total_approved=prog_tot_app,
             total_enrolled=prog_tot_enrolled,
             utilization_pct=util,
-            status=status_str
+            status=status_str,
+            enrolled_count=prog_enrolled_count,
+            admitted_count=prog_admitted_count
         ))
 
     overall_util = round((tot_enrolled / tot_approved * 100.0), 1) if tot_approved > 0 else 0.0
@@ -463,7 +534,13 @@ def get_institution_dashboard(
         total_enrolled_students=tot_enrolled,
         programme_intake_breakdown=prog_metrics,
         recent_batches=recent_batches,
-        recent_activity=recent_activity
+        recent_activity=recent_activity,
+        blocking_findings_count=blocking_count,
+        warning_findings_count=warning_count,
+        available_academic_years=available_years,
+        special_quota_breakdown=special_quotas,
+        enrolled_finalized_count=enrolled_finalized_count,
+        admitted_count=admitted_count,
     )
 
 def get_aicte_dashboard(
@@ -478,7 +555,11 @@ def get_aicte_dashboard(
     if current_user.role not in (UserRole.AICTE_ADMIN, UserRole.DEMO_ADMIN):
         raise PermissionDeniedError("AICTE monitoring dashboard is restricted to central AICTE administrators.")
 
-    ay = academic_year or "2024-2025"
+    if not academic_year:
+        latest_batch = db.query(ImportBatch.academic_year).order_by(ImportBatch.created_at.desc()).first()
+        ay = latest_batch[0] if (latest_batch and latest_batch[0]) else "2026-2027"
+    else:
+        ay = academic_year
 
     institutions = db.query(Institution).all()
     total_institutions = len(institutions)
@@ -487,9 +568,9 @@ def get_aicte_dashboard(
     total_batches = len(batches)
     total_submissions = sum(1 for b in batches if b.status in (BatchStatus.SUBMITTED, BatchStatus.UNDER_REVIEW, BatchStatus.ACCEPTED))
 
-    # All student records for this academic year
+    # All active student records for this academic year
     students = db.query(StudentRecord).filter(StudentRecord.academic_year == ay).all()
-    enrolled_students = [s for s in students if s.enrolment_status == EnrolmentStatus.ENROLLED]
+    enrolled_students = [s for s in students if s.enrolment_status in ACTIVE_ENROLMENT_STATUSES]
     total_enrolled = len(enrolled_students)
 
     # Approved intakes

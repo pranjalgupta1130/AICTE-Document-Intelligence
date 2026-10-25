@@ -1,0 +1,3 @@
+institution_student_id,student_name,programme_id,academic_year
+APEX-DUP-001,Alice,PROG-001-CSE,2026-2027
+APEX-DUP-001,Alice Duplicate,PROG-001-CSE,2026-2027

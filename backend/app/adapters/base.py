@@ -23,6 +23,16 @@ class VerificationResult(BaseModel):
     institution_id: Optional[str] = None
     message: str
     details: Optional[str] = None
+    record_id: Optional[str] = None
+    institution_student_id: Optional[str] = None
+    institution_name: Optional[str] = None
+    institution_code: Optional[str] = None
+    programme_id: Optional[str] = None
+    programme_name: Optional[str] = None
+    academic_year: Optional[str] = None
+    enrolment_status: Optional[str] = None
+    seat_type: Optional[str] = None
+    audit_trail: list = Field(default_factory=list)
 
 class BaseApaarAdapter(ABC):
     """

@@ -729,6 +729,71 @@ export interface AicteDashboardMetrics {
   }>;
 }
 
+export interface ProgrammeIntakeMetric {
+  programme_id: string;
+  programme_name: string;
+  regular_approved: number;
+  regular_enrolled: number;
+  supernumerary_approved: number;
+  supernumerary_enrolled: number;
+  total_approved: number;
+  total_enrolled: number;
+  utilization_pct: number;
+  status: 'WITHIN_LIMIT' | 'EXCEEDED';
+  enrolled_count?: number;
+  admitted_count?: number;
+}
+
+export interface SpecialQuotaMetric {
+  category: string;
+  label: string;
+  enrolled: number;
+  cap?: number | null;
+}
+
+export interface InstitutionDashboardMetrics {
+  institution_id: string;
+  institution_name: string;
+  academic_year: string;
+  total_batches: number;
+  latest_batch_status?: string | null;
+  total_student_records: number;
+  valid_records_count: number;
+  error_records_count: number;
+  missing_apaar_count: number;
+  duplicate_flags_count: number;
+  intake_utilization_pct: number;
+  total_approved_intake: number;
+  total_enrolled_students: number;
+  programme_intake_breakdown: ProgrammeIntakeMetric[];
+  recent_batches: Array<{
+    id: string;
+    source_filename: string;
+    academic_year: string;
+    version: number;
+    status: string;
+    total_rows: number;
+    valid_rows: number;
+    error_rows: number;
+    warning_rows: number;
+    created_at: string;
+  }>;
+  recent_activity: Array<{
+    timestamp: string;
+    action: string;
+    actor_email: string;
+    actor_role: string;
+    details?: string | null;
+    outcome: string;
+  }>;
+  blocking_findings_count: number;
+  warning_findings_count: number;
+  available_academic_years: string[];
+  special_quota_breakdown: SpecialQuotaMetric[];
+  enrolled_finalized_count?: number;
+  admitted_count?: number;
+}
+
 export interface ApprovedIntakeItem {
   id: string;
   institution_id: string;
@@ -742,6 +807,23 @@ export interface ApprovedIntakeItem {
 }
 
 export const dashboardService = {
+  /**
+   * Get institution operational metrics on GET /api/v1/dashboard/institution
+   */
+  async getInstitutionMetrics(params?: {
+    academic_year?: string;
+    institution_id?: string;
+  }): Promise<InstitutionDashboardMetrics> {
+    const q = new URLSearchParams();
+    if (params?.academic_year) q.set('academic_year', params.academic_year);
+    if (params?.institution_id) q.set('institution_id', params.institution_id);
+
+    const queryStr = q.toString();
+    return apiFetch<InstitutionDashboardMetrics>(
+      `/api/v1/dashboard/institution${queryStr ? `?${queryStr}` : ''}`
+    );
+  },
+
   /**
    * Get AICTE national analytics on GET /api/v1/dashboard/aicte
    */
@@ -768,3 +850,112 @@ export const dashboardService = {
     );
   },
 };
+
+export interface BackendAuditTrailEntry {
+  timestamp: string;
+  eventType: string;
+  actor: string;
+  actionDetails: string;
+  complianceStatus: string;
+  complianceBadgeClass?: string;
+}
+
+export interface VerificationResult {
+  apaar_id: string;
+  provider: string;
+  outcome: 'MOCK_VERIFIED' | 'MOCK_NOT_VERIFIED' | 'MOCK_UNAVAILABLE' | 'NEEDS_REVIEW';
+  is_official: boolean;
+  reference_id: string;
+  student_name?: string | null;
+  institution_id?: string | null;
+  message: string;
+  details?: string | null;
+  record_id?: string | null;
+  institution_student_id?: string | null;
+  institution_name?: string | null;
+  institution_code?: string | null;
+  programme_id?: string | null;
+  programme_name?: string | null;
+  academic_year?: string | null;
+  enrolment_status?: string | null;
+  seat_type?: string | null;
+  audit_trail: BackendAuditTrailEntry[];
+}
+
+export interface CertificatePreview {
+  is_synthetic_preview: boolean;
+  disclaimer: string;
+  institution_name: string;
+  institution_code: string;
+  student_name: string;
+  institution_student_id: string;
+  apaar_id: string;
+  programme_name: string;
+  academic_year: string;
+  seat_type: string;
+  enrolment_status: string;
+  verification_reference: string;
+}
+
+export interface StudentSearchResult {
+  id: string;
+  institution_id: string;
+  institution_name?: string | null;
+  institution_code?: string | null;
+  institution_student_id: string;
+  student_name?: string | null;
+  apaar_id?: string | null;
+  academic_year: string;
+  programme_id: string;
+  programme_name?: string | null;
+  enrolment_status: string;
+  seat_type: string;
+}
+
+export interface StudentSearchResponse {
+  items: StudentSearchResult[];
+  total: number;
+}
+
+export const verificationService = {
+  /**
+   * Search student records with institution isolation and APAAR masking
+   */
+  async searchStudents(params?: {
+    q?: string;
+    academic_year?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<StudentSearchResponse> {
+    const q = new URLSearchParams();
+    if (params?.q) q.set('q', params.q);
+    if (params?.academic_year) q.set('academic_year', params.academic_year);
+    if (params?.limit !== undefined) q.set('limit', String(params.limit));
+    if (params?.offset !== undefined) q.set('offset', String(params.offset));
+
+    const queryStr = q.toString();
+    return apiFetch<StudentSearchResponse>(
+      `/api/v1/verification/search${queryStr ? `?${queryStr}` : ''}`
+    );
+  },
+
+  /**
+   * Purpose-restricted single-record verification lookup
+   */
+  async verifyStudent(studentRef: string, simulateOutage = false): Promise<VerificationResult> {
+    const query = simulateOutage ? '?simulate_outage=true' : '';
+    return apiFetch<VerificationResult>(
+      `/api/v1/verification/${encodeURIComponent(studentRef)}${query}`
+    );
+  },
+
+  /**
+   * Synthetic degree certificate preview
+   */
+  async getCertificatePreview(studentRef: string): Promise<CertificatePreview> {
+    return apiFetch<CertificatePreview>(
+      `/api/v1/verification/${encodeURIComponent(studentRef)}/certificate`
+    );
+  },
+};
+

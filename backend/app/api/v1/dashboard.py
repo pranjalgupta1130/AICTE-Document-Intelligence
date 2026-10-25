@@ -19,6 +19,7 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 @router.get("/institution", response_model=InstitutionDashboardMetrics, summary="Get institution operational dashboard metrics")
 def institution_dashboard_endpoint(
     institution_id: Optional[str] = Query(None, description="Optional institution ID (strictly scoped to user unless AICTE admin)"),
+    academic_year: Optional[str] = Query(None, description="Academic year (e.g. 2026-2027)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -29,11 +30,13 @@ def institution_dashboard_endpoint(
     return get_institution_dashboard(
         db=db,
         current_user=current_user,
-        institution_id=institution_id
+        institution_id=institution_id,
+        academic_year=academic_year
     )
 
 @router.get("/aicte", response_model=AICTEDashboardMetrics, summary="Get AICTE national analytics and aggregate intake dashboard")
 def aicte_dashboard_endpoint(
+    academic_year: Optional[str] = Query(None, description="Academic year (e.g. 2026-2027)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -43,5 +46,6 @@ def aicte_dashboard_endpoint(
     """
     return get_aicte_dashboard(
         db=db,
-        current_user=current_user
+        current_user=current_user,
+        academic_year=academic_year
     )

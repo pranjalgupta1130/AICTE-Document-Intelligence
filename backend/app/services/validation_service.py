@@ -210,7 +210,7 @@ def execute_batch_validation(
     # We initialize with eligible enrolled students from prior batches of the same institution, programme and academic year
     prog_counts: Dict[str, Dict[str, int]] = {}
     for hist_rec in other_institution_records:
-        if hist_rec.programme_id in programmes and hist_rec.enrolment_status == EnrolmentStatus.ENROLLED:
+        if hist_rec.programme_id in programmes and hist_rec.enrolment_status in (EnrolmentStatus.ENROLLED, EnrolmentStatus.ADMITTED):
             p_counts = prog_counts.setdefault(hist_rec.programme_id, {"REGULAR": 0, "SUPERNUMERARY": 0, "TOTAL": 0})
             p_counts["TOTAL"] += 1
             if hist_rec.seat_type in (
@@ -431,7 +431,7 @@ def execute_batch_validation(
                     db.add(candidate)
 
         # Accumulate counts for intake reconciliation if programme is valid and student is active
-        if rec.programme_id in programmes and rec.enrolment_status == EnrolmentStatus.ENROLLED:
+        if rec.programme_id in programmes and rec.enrolment_status in (EnrolmentStatus.ENROLLED, EnrolmentStatus.ADMITTED):
             p_counts = prog_counts.setdefault(rec.programme_id, {"REGULAR": 0, "SUPERNUMERARY": 0, "TOTAL": 0})
             p_counts["TOTAL"] += 1
             if rec.seat_type in (
